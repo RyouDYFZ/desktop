@@ -4,14 +4,16 @@ import { Dispatcher } from '../dispatcher'
 import * as octicons from '../octicons/octicons.generated'
 import { Repository } from '../../models/repository'
 import { ToolbarDropdown, DropdownState } from './dropdown'
-import { FoldoutType } from '../../lib/app-state'
+import { FoldoutType, IConstrainedValue } from '../../lib/app-state'
 import { WorktreeEntry } from '../../models/worktree'
 import { WorktreeList } from '../worktrees/worktree-list'
-import { listWorktrees, isLinkedWorktree } from '../../lib/git/worktree'
+import { listWorktrees } from '../../lib/git/worktree'
 import { CloningRepository } from '../../models/cloning-repository'
 import { showContextualMenu } from '../../lib/menu-item'
 import { generateWorktreeContextMenuItems } from '../worktrees/worktree-list-item-context-menu'
 import { PopupType } from '../../models/popup'
+import { Resizable } from '../resizable'
+import { enableResizingToolbarButtons } from '../../lib/feature-flag'
 
 interface IWorktreeDropdownProps {
   readonly dispatcher: Dispatcher
@@ -20,12 +22,12 @@ interface IWorktreeDropdownProps {
   readonly onDropDownStateChanged: (state: DropdownState) => void
   readonly enableFocusTrap: boolean
   readonly repositories: ReadonlyArray<Repository | CloningRepository>
+  readonly worktreeDropdownWidth: IConstrainedValue
 }
 
 interface IWorktreeDropdownState {
   readonly worktrees: ReadonlyArray<WorktreeEntry>
   readonly filterText: string
-  readonly isCurrentRepoLinkedWorktree: boolean
   readonly worktreeAddedRepo: Repository | null
 }
 
@@ -38,7 +40,6 @@ export class WorktreeDropdown extends React.Component<
     this.state = {
       worktrees: [],
       filterText: '',
-      isCurrentRepoLinkedWorktree: false,
       worktreeAddedRepo: null,
     }
   }
@@ -53,21 +54,11 @@ export class WorktreeDropdown extends React.Component<
     const { repository } = this.props
 
     try {
-      const [worktrees, isLinked] = await Promise.all([
-        listWorktrees(repository),
-        isLinkedWorktree(repository),
-      ])
-
-      this.setState({
-        worktrees,
-        isCurrentRepoLinkedWorktree: isLinked,
-      })
+      const worktrees = await listWorktrees(repository)
+      this.setState({ worktrees })
     } catch (e) {
       log.error('Failed to fetch worktrees', e)
-      this.setState({
-        worktrees: [],
-        isCurrentRepoLinkedWorktree: false,
-      })
+      this.setState({ worktrees: [] })
     }
   }
 
@@ -138,6 +129,14 @@ export class WorktreeDropdown extends React.Component<
     })
   }
 
+  private onCreateNewWorktree = () => {
+    this.props.dispatcher.closeFoldout(FoldoutType.Worktree)
+    this.props.dispatcher.showPopup({
+      type: PopupType.AddWorktree,
+      repository: this.props.repository,
+    })
+  }
+
   private onFilterTextChanged = (text: string) => {
     this.setState({ filterText: text })
   }
@@ -154,7 +153,8 @@ export class WorktreeDropdown extends React.Component<
         onWorktreeClick={this.onWorktreeClick}
         filterText={this.state.filterText}
         onFilterTextChanged={this.onFilterTextChanged}
-        canCreateNewWorktree={false}
+        canCreateNewWorktree={true}
+        onCreateNewWorktree={this.onCreateNewWorktree}
         onWorktreeContextMenu={this.onWorktreeContextMenu}
       />
     )
@@ -168,6 +168,14 @@ export class WorktreeDropdown extends React.Component<
     )
   }
 
+  private onResize = (width: number) => {
+    this.props.dispatcher.setWorktreeDropdownWidth(width)
+  }
+
+  private onReset = () => {
+    this.props.dispatcher.resetWorktreeDropdownWidth()
+  }
+
   public render() {
     const { isOpen, enableFocusTrap } = this.props
     const currentState: DropdownState = isOpen ? 'open' : 'closed'
@@ -177,7 +185,7 @@ export class WorktreeDropdown extends React.Component<
       : this.props.repository.name
     const description = __DARWIN__ ? 'Current Worktree' : 'Current worktree'
 
-    return (
+    const toolbarDropdown = (
       <ToolbarDropdown
         className="worktree-button"
         icon={octicons.fileDirectory}
@@ -189,7 +197,27 @@ export class WorktreeDropdown extends React.Component<
         dropdownState={currentState}
         showDisclosureArrow={true}
         enableFocusTrap={enableFocusTrap}
+        foldoutStyleOverrides={
+          enableResizingToolbarButtons() ? { minWidth: 365 } : undefined
+        }
       />
+    )
+
+    if (!enableResizingToolbarButtons()) {
+      return toolbarDropdown
+    }
+
+    return (
+      <Resizable
+        width={this.props.worktreeDropdownWidth.value}
+        onReset={this.onReset}
+        onResize={this.onResize}
+        maximumWidth={this.props.worktreeDropdownWidth.max}
+        minimumWidth={this.props.worktreeDropdownWidth.min}
+        description="Current worktree dropdown button"
+      >
+        {toolbarDropdown}
+      </Resizable>
     )
   }
 }

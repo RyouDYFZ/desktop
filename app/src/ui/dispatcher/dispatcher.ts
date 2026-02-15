@@ -989,6 +989,14 @@ export class Dispatcher {
     return this.appStore._resetBranchDropdownWidth()
   }
 
+  public setWorktreeDropdownWidth(width: number): Promise<void> {
+    return this.appStore._setWorktreeDropdownWidth(width)
+  }
+
+  public resetWorktreeDropdownWidth(): Promise<void> {
+    return this.appStore._resetWorktreeDropdownWidth()
+  }
+
   /**
    * Set the width of the Push/Push toolbar button to the given value.
    * This affects the toolbar button and its dropdown element.

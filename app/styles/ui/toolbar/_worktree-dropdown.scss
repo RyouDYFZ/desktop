@@ -1,12 +1,15 @@
 .worktree-button {
   max-width: 250px;
 
+  &.resizable {
+    max-width: none;
+    width: 100%;
+  }
+
   .toolbar-dropdown-button {
-    // Ensure the button doesn't get too wide
     max-width: 100%;
   }
 
-  // Ensure title and description truncate properly
   .title,
   .description {
     @include ellipsis;
