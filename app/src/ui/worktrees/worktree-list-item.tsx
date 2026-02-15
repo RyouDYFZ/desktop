@@ -37,9 +37,15 @@ export class WorktreeListItem extends React.Component<IWorktreeListItemProps> {
           <HighlightText text={name} highlight={matches.title} />
         </TooltippedContent>
         {worktree.branch && (
-          <div className="description" title={worktree.branch}>
+          <TooltippedContent
+            className="description"
+            tooltip={worktree.branch}
+            onlyWhenOverflowed={true}
+            tagName="div"
+            disabled={enableAccessibleListToolTips()}
+          >
             {worktree.branch}
-          </div>
+          </TooltippedContent>
         )}
       </div>
     )
