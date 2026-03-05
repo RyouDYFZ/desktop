@@ -10,6 +10,9 @@ import { Emitter, Disposable } from 'event-kit'
 import * as ipcRenderer from '../ipc-renderer'
 import { join } from 'path'
 
+/** The default model ID used for Copilot commit message generation. */
+export const DefaultCopilotModel = 'gpt-5-mini'
+
 /**
  * Returns the path of the executable (Electron/Node) used to run the Copilot CLI.
  *
@@ -159,7 +162,7 @@ export class CopilotStore {
     try {
       // Create a session for commit message generation
       session = await client.createSession({
-        model: model ?? 'gpt-5-mini',
+        model: model ?? DefaultCopilotModel,
         reasoningEffort: 'low',
         systemMessage: {
           // It's important to 'append' the system prompt so that it doesn't

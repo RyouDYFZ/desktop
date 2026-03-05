@@ -2,6 +2,7 @@ import * as React from 'react'
 import { DialogContent } from '../dialog'
 import { Select } from '../lib/select'
 import { ICopilotModel } from '../../lib/app-state'
+import { DefaultCopilotModel } from '../../lib/stores/copilot-store'
 
 interface ICopilotPreferencesProps {
   readonly selectedCopilotModel: string | null
@@ -13,7 +14,9 @@ interface ICopilotPreferencesProps {
 export class CopilotPreferences extends React.Component<ICopilotPreferencesProps> {
   private onModelChanged = (event: React.FormEvent<HTMLSelectElement>) => {
     const value = event.currentTarget.value
-    this.props.onSelectedCopilotModelChanged(value === '' ? null : value)
+    this.props.onSelectedCopilotModelChanged(
+      value === DefaultCopilotModel ? null : value
+    )
   }
 
   public render() {
@@ -52,13 +55,12 @@ export class CopilotPreferences extends React.Component<ICopilotPreferencesProps
             ? 'Model Used for Commit Messages'
             : 'Model used for commit messages'
         }
-        value={selectedCopilotModel ?? ''}
+        value={selectedCopilotModel ?? DefaultCopilotModel}
         onChange={this.onModelChanged}
       >
-        <option value="">Default</option>
         {copilotModels.map(m => (
           <option key={m.id} value={m.id}>
-            {m.name}
+            {m.id === DefaultCopilotModel ? `${m.name} (default)` : m.name}
           </option>
         ))}
       </Select>
