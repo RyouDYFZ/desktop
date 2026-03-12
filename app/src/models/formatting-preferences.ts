@@ -4,6 +4,8 @@ import { format } from 'date-fns'
  * A date format pattern compatible with date-fns format().
  */
 export type DateFormat =
+  | 'MMM d, yyyy'
+  | 'MMMM do, yyyy'
   | 'MM/dd/yyyy'
   | 'dd/MM/yyyy'
   | 'dd-MM-yyyy'
@@ -27,10 +29,10 @@ export type TimeFormat =
   | 'HH.mm.ss'
   | 'HH:mm'
   | 'HH.mm'
-  | 'hh:mm:ss aaa'
-  | 'hh.mm.ss aaa'
-  | 'hh:mm aaa'
-  | 'hh.mm aaa'
+  | 'h:mm:ss aaa'
+  | 'h.mm.ss aaa'
+  | 'h:mm aaa'
+  | 'h.mm aaa'
 
 /**
  * Configuration for number formatting with separate thousands and decimal
@@ -52,6 +54,8 @@ export const dateFormats: ReadonlyArray<{
   readonly example: string
 }> = (
   [
+    'MMM d, yyyy',
+    'MMMM do, yyyy',
     'MM/dd/yyyy',
     'dd/MM/yyyy',
     'dd-MM-yyyy',
@@ -84,10 +88,10 @@ export const timeFormats: ReadonlyArray<{
     'HH.mm.ss',
     'HH:mm',
     'HH.mm',
-    'hh:mm:ss aaa',
-    'hh.mm.ss aaa',
-    'hh:mm aaa',
-    'hh.mm aaa',
+    'h:mm:ss aaa',
+    'h.mm.ss aaa',
+    'h:mm aaa',
+    'h.mm aaa',
   ] as const
 ).map(pattern => ({
   pattern,
@@ -141,8 +145,8 @@ export const numberFormats: ReadonlyArray<{
   example: formatNumber(previewNumber, fmt as INumberFormat),
 }))
 
-export const defaultDateFormat: DateFormat = 'MM/dd/yyyy'
-export const defaultTimeFormat: TimeFormat = 'hh:mm aaa'
+export const defaultDateFormat: DateFormat = 'MMM d, yyyy'
+export const defaultTimeFormat: TimeFormat = 'h:mm aaa'
 export const defaultNumberFormat: INumberFormat = {
   thousandsSeparator: '',
   decimalSeparator: '.',
