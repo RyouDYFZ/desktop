@@ -56,14 +56,16 @@ export function formatCompactNumber(
     return `${value}`
   }
 
-  if (value < 1000) {
+  const abs = Math.abs(value)
+
+  if (abs < 1000) {
     return formatNumber(value, fmt)
   }
 
   const units = ['', 'k', 'm', 'b', 't']
   const unitIx = Math.min(
     units.length - 1,
-    Math.floor(Math.log(Math.abs(value)) / Math.log(1000))
+    Math.floor(Math.log(abs) / Math.log(1000))
   )
 
   if (unitIx === 0) {
@@ -71,8 +73,8 @@ export function formatCompactNumber(
   }
 
   const scaled = value / Math.pow(1000, unitIx)
-  const decimals = scaled < 10 ? 1 : 0
+  const decimals = Math.abs(scaled) < 10 ? 1 : 0
 
   const result = round(scaled, decimals)
-  return formatNumber(result, fmt) + ' ' + units[unitIx]
+  return formatNumber(result, fmt) + units[unitIx]
 }
