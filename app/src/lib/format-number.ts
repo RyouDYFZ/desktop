@@ -16,7 +16,7 @@ import { enableFormattingPreferences } from './feature-flag'
  *                separators, defaults to the user's preferred format.
  */
 export function formatNumber(value: number, fmt?: INumberFormat): string {
-  if (!fmt && !enableFormattingPreferences()) {
+  if (!enableFormattingPreferences()) {
     return value.toString()
   }
 
