@@ -1,5 +1,33 @@
 import { format } from 'date-fns'
 
+const localeCountryCode =
+  new URL(location.href).hash.match(/lc=(\w*)/)?.[1] ?? null
+
+/**
+ * Countries that predominantly use 12-hour time format.
+ *
+ * Most of the world uses 24-hour time, so we list the exceptions here and
+ * default to 24-hour for unlisted countries.
+ */
+const twelveHourCountries = new Set([
+  'US', // United States
+  'CA', // Canada (mixed, but 12-hour common)
+  'AU', // Australia
+  'NZ', // New Zealand
+  'PH', // Philippines
+  'MY', // Malaysia
+  'IN', // India
+  'PK', // Pakistan
+  'BD', // Bangladesh
+  'EG', // Egypt
+  'SA', // Saudi Arabia
+  'CO', // Colombia
+])
+
+function prefersTwelveHourTime(): boolean {
+  return localeCountryCode !== null && twelveHourCountries.has(localeCountryCode)
+}
+
 /**
  * A date format pattern compatible with date-fns format().
  */
@@ -146,7 +174,9 @@ export const numberFormats: ReadonlyArray<{
 }))
 
 export const defaultDateFormat: DateFormat = 'MMM d, yyyy'
-export const defaultTimeFormat: TimeFormat = 'h:mm aaa'
+export const defaultTimeFormat: TimeFormat = prefersTwelveHourTime()
+  ? 'h:mm aaa'
+  : 'HH:mm'
 export const defaultNumberFormat: INumberFormat = {
   thousandsSeparator: '',
   decimalSeparator: '.',
