@@ -13,6 +13,7 @@ import {
   UpstreamRemoteName,
 } from '.'
 import type { CopilotFeature, CopilotModelSelections } from './copilot-store'
+import { CommitMessageGenerationCancelledError } from './copilot-store'
 import { Account, isDotComAccount } from '../../models/account'
 import { AppMenu, IMenu } from '../../models/app-menu'
 import { Author } from '../../models/author'
@@ -5709,6 +5710,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
         this.statsStore.increment('generateCommitMessageCount')
       } catch (e) {
+        if (e instanceof CommitMessageGenerationCancelledError) {
+          return false
+        }
+
         this.emitError(
           new ErrorWithMetadata(e, {
             repository,
@@ -5719,6 +5724,18 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
       return true
     })
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _cancelGenerateCommitMessage(
+    repository: Repository
+  ): Promise<void> {
+    const state = this.repositoryStateCache.get(repository)
+    if (!state.isGeneratingCommitMessage) {
+      return
+    }
+
+    await this.copilotStore.cancelCommitMessageGeneration()
   }
 
   /**

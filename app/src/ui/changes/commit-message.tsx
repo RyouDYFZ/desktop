@@ -176,6 +176,8 @@ interface ICommitMessageProps {
     mustOverrideExistingMessage: boolean
   ) => void
 
+  readonly onCancelGenerateCommitMessage?: () => void
+
   /**
    * Called when the component has given the commit message focus due to
    * `focusCommitMessage` being set. Used to reset the `focusCommitMessage`
@@ -968,6 +970,12 @@ export class CommitMessage extends React.Component<
     e: React.MouseEvent<HTMLButtonElement>
   ) => {
     e.preventDefault()
+
+    if (this.props.isGeneratingCommitMessage) {
+      this.props.onCancelGenerateCommitMessage?.()
+      return
+    }
+
     const { commitMessage } = this.state
 
     this.props.onGenerateCommitMessage?.(
@@ -1001,7 +1009,7 @@ export class CommitMessage extends React.Component<
     const noChangesAvailable = !commitToAmend && noFilesSelected
 
     const ariaLabel = isGeneratingCommitMessage
-      ? 'Generating commit details…'
+      ? 'Cancel generating commit details'
       : 'Generate commit message with Copilot' +
         (noChangesAvailable
           ? '. Files must be selected to generate a commit message.'
@@ -1017,8 +1025,7 @@ export class CommitMessage extends React.Component<
           tooltip={ariaLabel}
           disabled={
             isCommitting === true ||
-            isGeneratingCommitMessage ||
-            noChangesAvailable
+            (!isGeneratingCommitMessage && noChangesAvailable)
           }
         >
           <AriaLiveContainer
@@ -1026,7 +1033,11 @@ export class CommitMessage extends React.Component<
               isGeneratingCommitMessage ? 'Generating commit details…' : ''
             }
           />
-          <Octicon symbol={octicons.copilot} />
+          <Octicon
+            symbol={
+              isGeneratingCommitMessage ? octicons.x : octicons.copilot
+            }
+          />
           {shouldShowGenerateCommitMessageCallOut && (
             <span className="call-to-action-bubble">New</span>
           )}

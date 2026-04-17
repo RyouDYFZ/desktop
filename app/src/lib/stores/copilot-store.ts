@@ -1,4 +1,4 @@
-import { CopilotClient } from '@github/copilot-sdk'
+import { CopilotClient, CopilotSession } from '@github/copilot-sdk'
 import type { ModelInfo } from '@github/copilot-sdk'
 import { AccountsStore } from './accounts-store'
 import { Account, isDotComAccount } from '../../models/account'
@@ -133,12 +133,30 @@ export function getPreferredDefaultModel(
  *
  * Currently, Copilot is only available for GitHub.com accounts.
  */
+/**
+ * Error thrown when a commit message generation is cancelled by the user.
+ */
+export class CommitMessageGenerationCancelledError extends Error {
+  public constructor() {
+    super('Commit message generation was cancelled')
+    this.name = 'CommitMessageGenerationCancelledError'
+  }
+}
+
 export class CopilotStore extends BaseStore {
   private currentAccount: Account | null = null
 
   private cachedModels: ReadonlyArray<ModelInfo> | null = null
   private modelsCachedAt: number = 0
   private modelsInFlight: Promise<ReadonlyArray<ModelInfo>> | null = null
+
+  /**
+   * Tracks the active commit message generation session and client so that
+   * we can abort an in-flight request when the user cancels.
+   */
+  private activeSession: CopilotSession | null = null
+  private activeClient: CopilotClient | null = null
+  private generationCancelled = false
 
   public constructor(private readonly accountsStore: AccountsStore) {
     super()
@@ -247,6 +265,8 @@ export class CopilotStore extends BaseStore {
     repositoryPath: string,
     model?: string | null
   ): Promise<ICopilotCommitMessage> {
+    this.generationCancelled = false
+
     const cachedModels = await this.getCachedModels()
     const resolvedModel = model
       ? cachedModels.find(m => m.id === model) ?? null
@@ -257,8 +277,9 @@ export class CopilotStore extends BaseStore {
     const modelId = resolvedModel?.id ?? model ?? DefaultCopilotModel
 
     const client = await this.createClient(repositoryPath)
-    let session: Awaited<ReturnType<CopilotClient['createSession']>> | null =
-      null
+    this.activeClient = client
+
+    let session: CopilotSession | null = null
 
     try {
       const reasoningEffort = resolvedModel
@@ -282,6 +303,8 @@ export class CopilotStore extends BaseStore {
         }),
       })
 
+      this.activeSession = session
+
       // Send the diff and wait for response
       const response = await session.sendAndWait({ prompt: diff }, 30000)
 
@@ -291,14 +314,44 @@ export class CopilotStore extends BaseStore {
 
       return parseCopilotCommitMessage(response.data.content)
     } catch (e) {
+      if (this.generationCancelled) {
+        throw new CommitMessageGenerationCancelledError()
+      }
+
       log.warn('CopilotStore: Failed to generate commit message', e)
       throw e
     } finally {
+      this.activeSession = null
+      this.activeClient = null
+
       // Clean up the session
       await session?.destroy().catch(() => {})
 
       // Stop the client after use
       await this.stopClient(client)
+    }
+  }
+
+  /**
+   * Cancels an in-flight commit message generation, if one is active.
+   *
+   * This aborts the Copilot session and cleans up the client. The
+   * `generateCommitMessage` call will reject with a
+   * `CommitMessageGenerationCancelledError`.
+   */
+  public async cancelCommitMessageGeneration(): Promise<void> {
+    const session = this.activeSession
+
+    if (session === null) {
+      return
+    }
+
+    this.generationCancelled = true
+
+    try {
+      await session.abort()
+    } catch (e) {
+      log.warn('CopilotStore: Error aborting session', e)
     }
   }
 
