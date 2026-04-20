@@ -17,7 +17,7 @@ const sampleProvider: IBYOKProvider = {
   baseUrl: 'https://api.openai.com/v1',
   wireApi: 'completions',
   authKind: 'apiKey',
-  models: [{ id: 'gpt-4o', name: 'GPT-4o', supportsReasoningEffort: true }],
+  models: [{ id: 'gpt-4o', name: 'GPT-4o', reasoningEffort: 'medium' }],
 }
 
 afterEach(() => localStorage.clear())
@@ -53,6 +53,26 @@ describe('byok storage', () => {
       ])
     )
     assert.deepStrictEqual(loadBYOKProviders(), [sampleProvider])
+  })
+
+  it('migrates legacy supportsReasoningEffort: true to a default reasoningEffort', () => {
+    localStorage.setItem(
+      StorageKey,
+      JSON.stringify([
+        {
+          ...sampleProvider,
+          models: [
+            {
+              id: 'gpt-4o',
+              name: 'GPT-4o',
+              supportsReasoningEffort: true,
+            },
+          ],
+        },
+      ])
+    )
+    const [loaded] = loadBYOKProviders()
+    assert.strictEqual(loaded.models[0].reasoningEffort, 'low')
   })
 })
 

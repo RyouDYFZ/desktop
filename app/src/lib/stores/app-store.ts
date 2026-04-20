@@ -8728,7 +8728,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
       kind: 'byok',
       modelId: model.id,
       provider: providerConfig,
-      supportsReasoningEffort: model.supportsReasoningEffort === true,
+      ...(model.reasoningEffort !== undefined
+        ? { reasoningEffort: model.reasoningEffort }
+        : {}),
       ...(provider.requestTimeoutSeconds !== undefined &&
       provider.requestTimeoutSeconds > 0
         ? { timeoutMs: provider.requestTimeoutSeconds * 1000 }

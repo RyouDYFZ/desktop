@@ -1,4 +1,5 @@
 import { TokenStore } from '../stores/token-store'
+import type { ReasoningEffort } from '../stores/copilot-store'
 
 /** Provider type understood by the Copilot SDK BYOK config. */
 export type BYOKProviderType = 'openai' | 'azure' | 'anthropic'
@@ -23,8 +24,12 @@ export interface IBYOKModel {
   readonly name: string
   /** Optional context window hint, mainly informational. */
   readonly maxContextWindowTokens?: number
-  /** Whether this model supports configurable reasoning effort. */
-  readonly supportsReasoningEffort?: boolean
+  /**
+   * The reasoning effort to send when invoking this model. Set for reasoning
+   * models that support an explicit thinking effort (`o1`, `o3`, GPT-5
+   * reasoning variants, etc.); leave undefined for non-reasoning models.
+   */
+  readonly reasoningEffort?: ReasoningEffort
 }
 
 /**
@@ -74,10 +79,31 @@ export function loadBYOKProviders(): ReadonlyArray<IBYOKProvider> {
     if (!Array.isArray(parsed)) {
       return []
     }
-    return parsed.filter(isBYOKProvider)
+    return parsed.filter(isBYOKProvider).map(migrateLegacyProvider)
   } catch {
     return []
   }
+}
+
+/**
+ * Default reasoning effort applied to a model that was previously stored with
+ * the legacy `supportsReasoningEffort: true` boolean. We pick the lowest
+ * supported level to match the previous runtime behaviour.
+ */
+const LegacyReasoningEffortDefault: ReasoningEffort = 'low'
+
+function migrateLegacyProvider(provider: IBYOKProvider): IBYOKProvider {
+  let mutated = false
+  const models = provider.models.map(m => {
+    const legacy = (m as { supportsReasoningEffort?: boolean })
+      .supportsReasoningEffort
+    if (m.reasoningEffort === undefined && legacy === true) {
+      mutated = true
+      return { ...m, reasoningEffort: LegacyReasoningEffortDefault }
+    }
+    return m
+  })
+  return mutated ? { ...provider, models } : provider
 }
 
 /** Persists the given list of BYOK providers to local storage. */
@@ -172,7 +198,19 @@ function isBYOKModel(value: unknown): value is IBYOKModel {
     return false
   }
   const m = value as Record<string, unknown>
-  return typeof m.id === 'string' && typeof m.name === 'string'
+  if (typeof m.id !== 'string' || typeof m.name !== 'string') {
+    return false
+  }
+  if (
+    m.reasoningEffort !== undefined &&
+    m.reasoningEffort !== 'low' &&
+    m.reasoningEffort !== 'medium' &&
+    m.reasoningEffort !== 'high' &&
+    m.reasoningEffort !== 'xhigh'
+  ) {
+    return false
+  }
+  return true
 }
 
 function isBYOKProvider(value: unknown): value is IBYOKProvider {

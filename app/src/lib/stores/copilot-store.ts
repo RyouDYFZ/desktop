@@ -43,7 +43,11 @@ export type CopilotModelRequest =
       readonly kind: 'byok'
       readonly modelId: string
       readonly provider: CopilotProviderConfig
-      readonly supportsReasoningEffort: boolean
+      /**
+       * Optional reasoning effort to send with the request. When omitted no
+       * reasoning effort is forwarded to the SDK.
+       */
+      readonly reasoningEffort?: ReasoningEffort
       /**
        * Per-request timeout in milliseconds. When omitted the
        * {@link DefaultCopilotRequestTimeoutMs} default is used.
@@ -114,9 +118,9 @@ the JSON object, just return it as plain text. For example:
 `
 
 /** Ordered reasoning effort levels from lowest to highest. */
-const ReasoningEffortOrder = ['low', 'medium', 'high', 'xhigh'] as const
+export const ReasoningEffortOrder = ['low', 'medium', 'high', 'xhigh'] as const
 
-type ReasoningEffort = typeof ReasoningEffortOrder[number]
+export type ReasoningEffort = typeof ReasoningEffortOrder[number]
 
 /**
  * Returns the lowest reasoning effort supported by the given model, or
@@ -292,9 +296,7 @@ export class CopilotStore extends BaseStore {
 
     if (request && request.kind === 'byok') {
       modelId = request.modelId
-      reasoningEffort = request.supportsReasoningEffort
-        ? DefaultReasoningEffort
-        : undefined
+      reasoningEffort = request.reasoningEffort
       provider = request.provider
       if (request.timeoutMs !== undefined && request.timeoutMs > 0) {
         timeoutMs = request.timeoutMs
