@@ -59,6 +59,7 @@ interface IModelRowProps {
   readonly index: number
   readonly model: IBYOKModel
   readonly canRemove: boolean
+  readonly showLabels: boolean
   readonly onIdChanged: (index: number, id: string) => void
   readonly onNameChanged: (index: number, name: string) => void
   readonly onReasoningChanged: (index: number, value: boolean) => void
@@ -67,17 +68,19 @@ interface IModelRowProps {
 
 class ModelRow extends React.Component<IModelRowProps> {
   public render() {
-    const { model, canRemove } = this.props
+    const { model, canRemove, showLabels } = this.props
     return (
       <div className="copilot-byok-model-row">
         <TextBox
-          label="Model ID"
+          label={showLabels ? 'Model ID' : undefined}
+          ariaLabel={showLabels ? undefined : 'Model ID'}
           value={model.id}
           onValueChanged={this.onIdChanged}
           placeholder="gpt-4o"
         />
         <TextBox
-          label="Display name"
+          label={showLabels ? 'Display name' : undefined}
+          ariaLabel={showLabels ? undefined : 'Display name'}
           value={model.name}
           onValueChanged={this.onNameChanged}
           placeholder="GPT-4o"
@@ -288,6 +291,7 @@ export class EditCopilotBYOKProviderDialog extends React.Component<
             index={i}
             model={m}
             canRemove={this.state.models.length > 1}
+            showLabels={i === 0}
             onIdChanged={this.onModelIdChanged}
             onNameChanged={this.onModelNameChanged}
             onReasoningChanged={this.onModelReasoningChanged}
