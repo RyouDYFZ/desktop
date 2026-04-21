@@ -26,8 +26,10 @@ export interface IConflictHunk {
 export interface IFileConflictContext {
   /** Repository-relative file path */
   readonly path: string
-  /** All conflict hunks in the file */
+  /** All conflict hunks in the file (empty if skipped) */
   readonly hunks: ReadonlyArray<IConflictHunk>
+  /** If the file was skipped, the reason why (shown in prompt so Copilot knows) */
+  readonly skippedReason?: string
 }
 
 /**
@@ -239,38 +241,38 @@ export async function buildConflictContext(
   files: ReadonlyArray<{ readonly path: string }>
 ): Promise<ICopilotConflictContext> {
   const results = await Promise.all(
-    files.map(async (file): Promise<IFileConflictContext | null> => {
+    files.map(async (file): Promise<IFileConflictContext> => {
       // Guard against path traversal and symlink escapes (cross-platform)
       let absolutePath: string | null
       try {
         absolutePath = await resolveWithin(workingDirectory, file.path)
       } catch {
-        return null
+        return { path: file.path, hunks: [], skippedReason: 'File path could not be resolved safely' }
       }
       if (absolutePath === null) {
-        return null
+        return { path: file.path, hunks: [], skippedReason: 'File path is outside the repository' }
       }
 
       // Check file size before reading to avoid loading huge files into memory
       try {
         const fileStat = await stat(absolutePath)
         if (fileStat.size > MAX_CONFLICT_FILE_SIZE) {
-          return null
+          return { path: file.path, hunks: [], skippedReason: 'File exceeds 1MB size limit' }
         }
       } catch {
-        return null
+        return { path: file.path, hunks: [], skippedReason: 'File could not be read' }
       }
 
       let content: string
       try {
         content = await readFile(absolutePath, 'utf8')
       } catch {
-        return null
+        return { path: file.path, hunks: [], skippedReason: 'File could not be read' }
       }
 
       const hunks = extractConflictHunks(content)
       if (hunks.length === 0) {
-        return null
+        return { path: file.path, hunks: [], skippedReason: 'No conflict markers found' }
       }
 
       return { path: file.path, hunks }
@@ -280,7 +282,7 @@ export async function buildConflictContext(
   return {
     ourLabel,
     theirLabel,
-    files: results.filter((f): f is IFileConflictContext => f !== null),
+    files: results,
   }
 }
 
@@ -342,10 +344,17 @@ export function formatConflictContextForPrompt(
   }
 
   for (const file of context.files) {
-    const lang = getLangFromPath(file.path)
     const safePath = sanitizeForMarkdown(file.path)
     parts.push(`## File: ${safePath}`)
     parts.push('')
+
+    if (file.skippedReason) {
+      parts.push(`> ⚠️ Skipped: ${file.skippedReason}`)
+      parts.push('')
+      continue
+    }
+
+    const lang = getLangFromPath(file.path)
 
     for (let i = 0; i < file.hunks.length; i++) {
       const hunk = file.hunks[i]

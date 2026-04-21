@@ -524,6 +524,41 @@ describe('copilot-conflict-context', () => {
       assert.ok(!result.includes('Context before'))
       assert.ok(!result.includes('Context after'))
     })
+
+    it('renders skipped files with a reason instead of hunks', () => {
+      const context: ICopilotConflictContext = {
+        ourLabel: 'main',
+        theirLabel: 'feature',
+        files: [
+          {
+            path: 'src/big-file.ts',
+            hunks: [],
+            skippedReason: 'File exceeds 1MB size limit',
+          },
+          {
+            path: 'src/normal.ts',
+            hunks: [
+              {
+                oursContent: 'ours',
+                theirsContent: 'theirs',
+                baseContent: null,
+                contextBefore: '',
+                contextAfter: '',
+              },
+            ],
+          },
+        ],
+      }
+
+      const result = formatConflictContextForPrompt(context)
+
+      // Skipped file should show heading and reason
+      assert.ok(result.includes('## File: src/big-file.ts'))
+      assert.ok(result.includes('Skipped: File exceeds 1MB size limit'))
+      // Normal file should still render hunks
+      assert.ok(result.includes('## File: src/normal.ts'))
+      assert.ok(result.includes('ours'))
+    })
   })
 
   describe('formatConflictContextForPrompt with enrichment', () => {
