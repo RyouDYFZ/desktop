@@ -2,17 +2,9 @@ import isPlainObject from 'lodash/isPlainObject'
 
 import { IFileConflictContext } from './copilot-conflict-context'
 
-/**
- * Error subclass for parse and validation failures from Copilot responses.
- * Used to distinguish retryable errors (bad LLM output) from transport
- * errors (timeouts, auth, session creation) which should fail fast.
- */
-export class CopilotValidationError extends Error {
-  public constructor(message: string) {
-    super(message)
-    this.name = 'CopilotValidationError'
-  }
-}
+// ---------------------------------------------------------------------------
+// Types & interfaces
+// ---------------------------------------------------------------------------
 
 /** Resolution suggestion for a single conflicted file. */
 export interface IFileResolution {
@@ -29,6 +21,90 @@ export interface ICopilotConflictResolutionResponse {
   /** Resolution suggestions, one per conflicted file. */
   readonly resolutions: ReadonlyArray<IFileResolution>
 }
+
+/** Progress information emitted during conflict resolution. */
+export interface IConflictResolutionProgress {
+  readonly filesResolved: number
+  readonly filesTotal: number
+}
+
+// ---------------------------------------------------------------------------
+// Error class
+// ---------------------------------------------------------------------------
+
+/**
+ * Error subclass for parse and validation failures from Copilot responses.
+ * Used to distinguish retryable errors (bad LLM output) from transport
+ * errors (timeouts, auth, session creation) which should fail fast.
+ */
+export class CopilotValidationError extends Error {
+  public constructor(message: string) {
+    super(message)
+    this.name = 'CopilotValidationError'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum number of files to resolve in a single prompt. When the total
+ * exceeds this threshold, the engine batches files into parallel chunks.
+ */
+export const SinglePromptFileLimit = 20
+
+/** Maximum number of chunks to resolve concurrently. */
+export const MaxConcurrentChunks = 5
+
+/**
+ * System prompt for the Copilot conflict resolution session.
+ */
+export const ConflictResolutionSystemPrompt = `
+You have all the context you need below. Do NOT attempt to use tools. Respond ONLY with the JSON format specified.
+
+You are an expert Git conflict resolver. Your task is to analyze conflicts from merge, rebase, or cherry-pick operations and produce correct, clean resolutions.
+
+You will receive:
+- Labels for both sides of the conflict (e.g., branch names or commit references)
+- The conflict markers from each conflicted file (ours, theirs, and optionally base content)
+- Context lines surrounding each conflict
+- When available: recent commit messages from both sides explaining the intent behind changes
+- When available: the pull request title and description providing higher-level context
+
+Your job:
+1. Understand the INTENT behind each side's changes using commit messages and PR context when available
+2. Resolve each conflict by producing the correct merged content
+3. Explain your reasoning for each resolution
+
+Resolution guidelines:
+- Make the MINIMAL changes necessary to resolve the conflict — do not refactor, reformat, or alter code outside the conflicted regions
+- When both sides add complementary code (e.g., different imports, different functions), combine them
+- When both sides modify the same code differently, use commit messages and PR context to determine the correct resolution
+- When one side deletes code the other modifies, determine if the deletion was intentional
+- Preserve code correctness: imports, types, formatting must be valid
+- When in doubt, prefer the approach that maintains backward compatibility
+
+You MUST respond with valid JSON in this exact format:
+{
+  "resolutions": [
+    {
+      "path": "relative/file/path.ts",
+      "resolvedContent": "the complete resolved file content with all conflicts resolved",
+      "reasoning": "explanation of how you resolved each conflict and why"
+    }
+  ]
+}
+
+Important:
+- resolvedContent must contain the COMPLETE file content (not just the conflicted sections)
+- All conflict markers must be removed in the resolved content
+- Include one resolution entry per conflicted file
+`
+
+// ---------------------------------------------------------------------------
+// Functions
+// ---------------------------------------------------------------------------
 
 /**
  * Parse the raw string response from the Copilot SDK into a structured
@@ -177,66 +253,6 @@ export function validateResolutionPaths(
     )
   }
 }
-
-/**
- * System prompt for the Copilot conflict resolution session.
- */
-export const ConflictResolutionSystemPrompt = `
-You have all the context you need below. Do NOT attempt to use tools. Respond ONLY with the JSON format specified.
-
-You are an expert Git conflict resolver. Your task is to analyze conflicts from merge, rebase, or cherry-pick operations and produce correct, clean resolutions.
-
-You will receive:
-- Labels for both sides of the conflict (e.g., branch names or commit references)
-- The conflict markers from each conflicted file (ours, theirs, and optionally base content)
-- Context lines surrounding each conflict
-- When available: recent commit messages from both sides explaining the intent behind changes
-- When available: the pull request title and description providing higher-level context
-
-Your job:
-1. Understand the INTENT behind each side's changes using commit messages and PR context when available
-2. Resolve each conflict by producing the correct merged content
-3. Explain your reasoning for each resolution
-
-Resolution guidelines:
-- Make the MINIMAL changes necessary to resolve the conflict — do not refactor, reformat, or alter code outside the conflicted regions
-- When both sides add complementary code (e.g., different imports, different functions), combine them
-- When both sides modify the same code differently, use commit messages and PR context to determine the correct resolution
-- When one side deletes code the other modifies, determine if the deletion was intentional
-- Preserve code correctness: imports, types, formatting must be valid
-- When in doubt, prefer the approach that maintains backward compatibility
-
-You MUST respond with valid JSON in this exact format:
-{
-  "resolutions": [
-    {
-      "path": "relative/file/path.ts",
-      "resolvedContent": "the complete resolved file content with all conflicts resolved",
-      "reasoning": "explanation of how you resolved each conflict and why"
-    }
-  ]
-}
-
-Important:
-- resolvedContent must contain the COMPLETE file content (not just the conflicted sections)
-- All conflict markers must be removed in the resolved content
-- Include one resolution entry per conflicted file
-`
-
-/** Progress information emitted during conflict resolution. */
-export interface IConflictResolutionProgress {
-  readonly filesResolved: number
-  readonly filesTotal: number
-}
-
-/**
- * Maximum number of files to resolve in a single prompt. When the total
- * exceeds this threshold, the engine batches files into parallel chunks.
- */
-export const SinglePromptFileLimit = 20
-
-/** Maximum number of chunks to resolve concurrently. */
-export const MaxConcurrentChunks = 5
 
 /**
  * Extract exported and imported symbols from conflict hunk content for
