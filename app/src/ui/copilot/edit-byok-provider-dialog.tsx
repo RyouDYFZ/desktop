@@ -13,6 +13,7 @@ import {
   BYOKProviderType,
   BYOKAuthKind,
   BYOKWireApi,
+  isValidBYOKBaseUrl,
 } from '../../lib/copilot/byok'
 import { ReasoningEffort } from '../../lib/stores/copilot-store'
 import { Dispatcher } from '../dispatcher'
@@ -449,13 +450,8 @@ export class EditCopilotBYOKProviderDialog extends React.Component<
     if (trimmedUrl === '') {
       return 'Please enter a base URL.'
     }
-    try {
-      const parsed = new URL(trimmedUrl)
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return 'Base URL must use http or https.'
-      }
-    } catch {
-      return 'Base URL is not a valid URL.'
+    if (!isValidBYOKBaseUrl(trimmedUrl)) {
+      return 'Base URL must be a valid http or https URL.'
     }
 
     const trimmedModels = this.state.models.filter(m => m.id.trim() !== '')

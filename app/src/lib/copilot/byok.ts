@@ -191,6 +191,20 @@ export function parseModelKey(value: string): CopilotModelKey {
   return { kind: 'copilot', modelId: value }
 }
 
+/**
+ * Returns true if the given string parses as an absolute http:// or https://
+ * URL. Used as the single source of truth for `baseUrl` validation in both
+ * the dialog and the localStorage loader.
+ */
+export function isValidBYOKBaseUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function isBYOKModel(value: unknown): value is IBYOKModel {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -219,7 +233,8 @@ function isBYOKProvider(value: unknown): value is IBYOKProvider {
   if (
     typeof p.id !== 'string' ||
     typeof p.name !== 'string' ||
-    typeof p.baseUrl !== 'string'
+    typeof p.baseUrl !== 'string' ||
+    !isValidBYOKBaseUrl(p.baseUrl)
   ) {
     return false
   }
