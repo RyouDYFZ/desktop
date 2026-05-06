@@ -197,7 +197,7 @@ import {
   PushProtectionErrorDialog,
 } from './secret-scanning/push-protection-error-dialog'
 import { GenerateCommitMessageOverrideWarning } from './generate-commit-message/generate-commit-message-override-warning'
-import { GenerateCommitMessageDisclaimer } from './generate-commit-message/generate-commit-message-disclaimer'
+import { CopilotDisclaimer } from './copilot/copilot-disclaimer'
 import { IAPICreatePushProtectionBypassResponse } from '../lib/api'
 import {
   BypassPushProtectionDialog,
@@ -2257,6 +2257,9 @@ export class App extends React.Component<IAppProps, IAppState> {
             }
             accounts={this.state.accounts}
             cachedRepoRulesets={this.state.cachedRepoRulesets}
+            shouldShowCopilotConflictResolutionCallOut={
+              !this.state.copilotConflictResolutionButtonClicked
+            }
             openFileInExternalEditor={this.openFileInExternalEditor}
             resolvedExternalEditor={this.state.resolvedExternalEditor}
             openRepositoryInShell={this.openCurrentRepositoryInShell}
@@ -2621,14 +2624,38 @@ export class App extends React.Component<IAppProps, IAppState> {
         )
       }
       case PopupType.GenerateCommitMessageDisclaimer: {
+        const { repository, filesSelected } = popup
+        const onAccepted = () => {
+          this.props.dispatcher.updateCommitMessageGenerationDisclaimerLastSeen()
+          this.props.dispatcher.generateCommitMessage(repository, filesSelected)
+        }
         return (
-          <GenerateCommitMessageDisclaimer
+          <CopilotDisclaimer
             key="generate-commit-message-disclaimer"
-            dispatcher={this.props.dispatcher}
-            repository={popup.repository}
-            filesSelected={popup.filesSelected}
+            // eslint-disable-next-line react/jsx-no-bind
+            onAccepted={onAccepted}
             onDismissed={onPopupDismissedFn}
-          />
+          >
+            Review and edit the generated message carefully before use.
+          </CopilotDisclaimer>
+        )
+      }
+      case PopupType.CopilotConflictResolutionDisclaimer: {
+        const { repository } = popup
+        const onAccepted = () => {
+          this.props.dispatcher.updateCopilotConflictResolutionDisclaimerLastSeen()
+          this.props.dispatcher.attemptCopilotConflictResolution(repository)
+        }
+        return (
+          <CopilotDisclaimer
+            key="copilot-conflict-resolution-disclaimer"
+            // eslint-disable-next-line react/jsx-no-bind
+            onAccepted={onAccepted}
+            onDismissed={onPopupDismissedFn}
+          >
+            Review the suggested resolutions carefully before applying them to
+            your files.
+          </CopilotDisclaimer>
         )
       }
       case PopupType.HookFailed: {

@@ -1133,6 +1133,22 @@ export class Dispatcher {
   }
 
   /**
+   * User-facing entry point invoked from the manual conflicts dialog's
+   * "Resolve with Copilot" button. Handles account-availability check,
+   * first-click tracking, and the AI-tool disclaimer popup before
+   * transitioning to the loading interstitial.
+   */
+  public attemptCopilotConflictResolution(
+    repository: Repository
+  ): Promise<void> {
+    return this.appStore._attemptCopilotConflictResolution(repository)
+  }
+
+  public updateCopilotConflictResolutionDisclaimerLastSeen() {
+    return this.appStore._updateCopilotConflictResolutionDisclaimerLastSeen()
+  }
+
+  /**
    * Write Copilot-resolved file contents to disk and stage them.
    * Called when the user confirms the resolutions from the result dialog.
    */

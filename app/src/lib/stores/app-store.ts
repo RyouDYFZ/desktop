@@ -165,6 +165,7 @@ import { assertNever, fatalError, forceUnwrap } from '../fatal-error'
 import { formatCommitMessage } from '../format-commit-message'
 import {
   getAccountForCommitMessageGeneration,
+  getAccountForCopilotConflictResolution,
   getAccountForRepository,
 } from '../get-account-for-repository'
 import {
@@ -505,6 +506,12 @@ const commitMessageGenerationDisclaimerLastSeenKey =
 const commitMessageGenerationButtonClickedKey =
   'commit-message-generation-button-clicked'
 
+const copilotConflictResolutionDisclaimerLastSeenKey =
+  'copilot-conflict-resolution-disclaimer-last-seen'
+
+const copilotConflictResolutionButtonClickedKey =
+  'copilot-conflict-resolution-button-clicked'
+
 export const showChangesFilterKey = 'show-changes-filter'
 
 const selectedCopilotModelsKey = 'selected-copilot-models'
@@ -666,6 +673,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   private commitMessageGenerationDisclaimerLastSeen: number | null = null
   private commitMessageGenerationButtonClicked: boolean = false
+
+  private copilotConflictResolutionDisclaimerLastSeen: number | null = null
+  private copilotConflictResolutionButtonClicked: boolean = false
 
   private showChangesFilter: boolean = false
 
@@ -1182,6 +1192,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         this.commitMessageGenerationDisclaimerLastSeen,
       commitMessageGenerationButtonClicked:
         this.commitMessageGenerationButtonClicked,
+      copilotConflictResolutionDisclaimerLastSeen:
+        this.copilotConflictResolutionDisclaimerLastSeen,
+      copilotConflictResolutionButtonClicked:
+        this.copilotConflictResolutionButtonClicked,
       showChangesFilter: this.showChangesFilter,
       selectedCopilotModels: this.selectedCopilotModels,
       copilotModels: this.copilotModels,
@@ -2441,6 +2455,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.commitMessageGenerationButtonClicked = getBoolean(
       commitMessageGenerationButtonClickedKey,
+      false
+    )
+
+    this.copilotConflictResolutionDisclaimerLastSeen =
+      getNumber(copilotConflictResolutionDisclaimerLastSeenKey) ?? null
+
+    this.copilotConflictResolutionButtonClicked = getBoolean(
+      copilotConflictResolutionButtonClickedKey,
       false
     )
 
@@ -5696,6 +5718,23 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
+  public _updateCopilotConflictResolutionDisclaimerLastSeen(): void {
+    this.copilotConflictResolutionDisclaimerLastSeen = Date.now()
+    setNumber(
+      copilotConflictResolutionDisclaimerLastSeenKey,
+      this.copilotConflictResolutionDisclaimerLastSeen
+    )
+    this.emitUpdate()
+  }
+
+  public _setCopilotConflictResolutionButtonClicked(): void {
+    if (!this.copilotConflictResolutionButtonClicked) {
+      this.copilotConflictResolutionButtonClicked = true
+      setBoolean(copilotConflictResolutionButtonClickedKey, true)
+      this.emitUpdate()
+    }
+  }
+
   public async _generateCommitMessage(
     repository: Repository,
     filesSelected: ReadonlyArray<WorkingDirectoryFileChange>
@@ -5921,6 +5960,76 @@ export class AppStore extends TypedBaseStore<IAppState> {
       log.warn('AppStore: Copilot conflict resolution failed', e)
       return null
     }
+  }
+
+  /**
+   * Pre-flight entry point for Copilot conflict resolution invoked from
+   * the manual conflicts dialog's "Resolve with Copilot" button.
+   *
+   * Verifies a Copilot-enabled account exists, sets the first-click flag,
+   * and gates on the AI-tool disclaimer (shown on first use and again
+   * every 30 days). On clean pass, transitions the multi-commit-operation
+   * step to the loading interstitial and kicks off
+   * `_startCopilotConflictResolution`.
+   *
+   * This shouldn't be called directly. See `Dispatcher`.
+   */
+  public async _attemptCopilotConflictResolution(
+    repository: Repository
+  ): Promise<void> {
+    const state = this.repositoryStateCache.get(repository)
+    const { multiCommitOperationState } = state
+    if (multiCommitOperationState === null) {
+      return
+    }
+
+    const { step } = multiCommitOperationState
+    if (step.kind !== MultiCommitOperationStepKind.ShowConflicts) {
+      return
+    }
+
+    const account = getAccountForCopilotConflictResolution(
+      this.accounts,
+      repository
+    )
+
+    if (!account) {
+      return
+    }
+
+    // Track that the user has clicked the entry point so we can hide the
+    // "New" call-to-action bubble.
+    this._setCopilotConflictResolutionButtonClicked()
+
+    // First-use disclaimer + periodic re-confirmation. Mirrors the
+    // commit-message-generation pattern.
+    if (
+      !this.copilotConflictResolutionDisclaimerLastSeen ||
+      offsetFromNow(-30, 'days') >
+        this.copilotConflictResolutionDisclaimerLastSeen
+    ) {
+      await this._showPopup({
+        type: PopupType.CopilotConflictResolutionDisclaimer,
+        repository,
+      })
+      return
+    }
+
+    // Transition to the loading interstitial and start the resolution.
+    const { conflictState } = step
+    this.repositoryStateCache.updateMultiCommitOperationState(
+      repository,
+      () => ({
+        step: {
+          kind: MultiCommitOperationStepKind.ShowCopilotConflictsLoading,
+          conflictState,
+        },
+        useCopilotConflictResolution: true,
+      })
+    )
+    this.emitUpdate()
+
+    return this._startCopilotConflictResolution(repository)
   }
 
   /**

@@ -106,6 +106,7 @@ export enum PopupType {
   BypassPushProtection = 'BypassPushProtection',
   GenerateCommitMessageOverrideWarning = 'GenerateCommitMessageOverrideWarning',
   GenerateCommitMessageDisclaimer = 'GenerateCommitMessageDisclaimer',
+  CopilotConflictResolutionDisclaimer = 'CopilotConflictResolutionDisclaimer',
   HookFailed = 'HookFailed',
   CommitProgress = 'CommitProgress',
   EditCopilotBYOKProvider = 'EditCopilotBYOKProvider',
@@ -486,6 +487,10 @@ export type PopupDetail =
       // from this popup we will trigger the commit message generation too.
       repository: Repository
       filesSelected: ReadonlyArray<WorkingDirectoryFileChange>
+    }
+  | {
+      type: PopupType.CopilotConflictResolutionDisclaimer
+      repository: Repository
     }
   | {
       type: PopupType.HookFailed

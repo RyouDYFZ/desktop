@@ -396,6 +396,10 @@ export interface IAppState {
 
   readonly commitMessageGenerationButtonClicked: boolean
 
+  readonly copilotConflictResolutionDisclaimerLastSeen: number | null
+
+  readonly copilotConflictResolutionButtonClicked: boolean
+
   /** Whether the changes filter is shown */
   readonly showChangesFilter: boolean
 
