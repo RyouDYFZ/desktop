@@ -144,9 +144,6 @@ export class RepositoriesDatabase extends BaseDatabase {
 
     this.conditionalVersion(8, {}, ensureNoUndefinedParentID)
     this.conditionalVersion(9, { owners: '++id, &key' }, createOwnerKey)
-
-    // Version 10: Add mainWorktreePath column to repositories (no index needed)
-    this.conditionalVersion(10, {})
   }
 }
 
