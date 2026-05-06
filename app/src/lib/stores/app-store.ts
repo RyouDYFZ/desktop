@@ -6154,6 +6154,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
     } catch (e) {
       log.warn('AppStore: Copilot conflict resolution flow failed', e)
 
+      // Surface the error to the user so they understand why they were
+      // routed back to manual conflict resolution. Mirrors the pattern
+      // used by `_generateCommitMessage`.
+      this.emitError(new ErrorWithMetadata(e, { repository }))
+
       // Transition back to manual conflict resolution
       this.repositoryStateCache.updateMultiCommitOperationState(
         repository,
