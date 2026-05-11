@@ -1,8 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import {
-  setupFixtureRepository,
-} from '../../helpers/repositories'
+import { setupFixtureRepository } from '../../helpers/repositories'
 import { Repository } from '../../../src/models/repository'
 import {
   getWorkingDirectoryDiff,
