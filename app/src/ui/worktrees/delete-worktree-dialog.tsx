@@ -76,15 +76,23 @@ export class DeleteWorktreeDialog extends React.Component<
           throw new Error('Could not find main worktree')
         }
 
-        const addedRepos = await dispatcher.addRepositories([mainPath])
-        if (addedRepos.length === 0) {
-          throw new Error('Could not add main worktree repository')
-        }
-
-        const mainRepo = addedRepos[0]
-        await dispatcher.selectRepository(mainRepo)
+        // Switch the existing repository record to the main worktree path,
+        // preserving the id, alias, and other settings.
+        await dispatcher.switchWorktree(repository, mainPath)
+        // removeWorktree needs to run from a path other than the one being
+        // deleted. The repository object is immutable and still holds the old
+        // path so we construct a copy pointing at the main worktree.
+        const mainRepo = new Repository(
+          mainPath,
+          repository.id,
+          repository.gitHubRepository,
+          repository.missing,
+          repository.alias,
+          repository.workflowPreferences,
+          repository.isTutorialRepository,
+          repository.mainWorktreePath
+        )
         await removeWorktree(mainRepo, worktreePath)
-        await dispatcher.removeRepository(repository, false)
       } else {
         await removeWorktree(repository, worktreePath)
       }
