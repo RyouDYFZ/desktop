@@ -221,6 +221,7 @@ import {
   TerminalOutput,
   HookProgress,
   git,
+  isGitError,
 } from '../git'
 import {
   installGlobalLFSFilters,
@@ -394,6 +395,7 @@ import {
   gatherCommitContext,
 } from '../copilot-conflict-context'
 import { resolveWithin } from '../path'
+import { coerceToString } from '../git/coerce-to-string'
 
 const LastSelectedRepositoryIDKey = 'last-selected-repository-id'
 
@@ -4241,9 +4243,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
         .then(() => this.onSuccessfulCheckout(repository, branch))
         .catch(async e => {
           const worktreePath = this.parseWorktreeConflictError(e)
-          if (worktreePath !== null) {
-            await this._switchWorktree(repository, worktreePath)
-            return
+          if (worktreePath !== undefined) {
+            return this._switchWorktree(repository, worktreePath)
           }
           this.emitError(new CheckoutError(e, repository, branch))
         })
@@ -4254,17 +4255,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   /**
    * If a checkout error is due to the branch being checked out in another
-   * worktree, extract and return that worktree's path. Returns null if the
+   * worktree, extract and return that worktree's path. Returns undefined if the
    * error is unrelated.
    */
-  private parseWorktreeConflictError(e: unknown): string | null {
-    if (!(e instanceof GitError)) {
-      return null
-    }
-
-    const match = e.message.match(/is already used by worktree at '(.+?)'/)
-
-    return match?.[1] ?? null
+  private parseWorktreeConflictError(e: unknown): string | undefined {
+    return isGitError(e)
+      ? coerceToString(e.result.stderr).match(
+          /fatal: '.*?' is already used by worktree at '(.+?)'/
+        )?.[1]
+      : undefined
   }
 
   /** Invoke the best checkout implementation for the selected strategy */
