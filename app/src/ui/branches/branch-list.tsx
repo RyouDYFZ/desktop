@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { Branch, BranchType } from '../../models/branch'
+import { Branch } from '../../models/branch'
 
 import { assertNever } from '../../lib/fatal-error'
 
@@ -133,7 +133,7 @@ interface IBranchListProps {
   readonly onDeleteBranch?: (branchName: string) => void
 
   /** Optional: Callback to checkout a branch in a new worktree */
-  readonly onCheckoutInNewWorktree?: (branchName: string) => void
+  readonly onCheckoutInNewWorktree?: (branch: Branch) => void
 }
 
 interface IBranchListState {
@@ -297,12 +297,10 @@ export class BranchList extends React.Component<
       return
     }
 
-    const { type, name } = item.branch
-    const isLocal = type === BranchType.Local
+    const { branch } = item
 
     const items = generateBranchContextMenuItems({
-      name,
-      isLocal,
+      branch,
       onRenameBranch,
       onDeleteBranch,
       onCheckoutInNewWorktree,

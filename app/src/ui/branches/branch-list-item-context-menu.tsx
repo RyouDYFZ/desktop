@@ -1,22 +1,21 @@
 import { IMenuItem } from '../../lib/menu-item'
 import { clipboard } from 'electron'
+import { Branch, BranchType } from '../../models/branch'
 
 interface IBranchContextMenuConfig {
-  name: string
-  isLocal: boolean
+  branch: Branch
   onRenameBranch?: (branchName: string) => void
   onViewBranchOnGitHub?: () => void
   onViewPullRequestOnGitHub?: () => void
   onDeleteBranch?: (branchName: string) => void
-  onCheckoutInNewWorktree?: (branchName: string) => void
+  onCheckoutInNewWorktree?: (branch: Branch) => void
 }
 
 export function generateBranchContextMenuItems(
   config: IBranchContextMenuConfig
 ): IMenuItem[] {
   const {
-    name,
-    isLocal,
+    branch,
     onRenameBranch,
     onViewBranchOnGitHub,
     onViewPullRequestOnGitHub,
@@ -28,14 +27,14 @@ export function generateBranchContextMenuItems(
   if (onRenameBranch !== undefined) {
     items.push({
       label: 'Rename…',
-      action: () => onRenameBranch(name),
-      enabled: isLocal,
+      action: () => onRenameBranch(branch.name),
+      enabled: branch.type === BranchType.Local,
     })
   }
 
   items.push({
     label: __DARWIN__ ? 'Copy Branch Name' : 'Copy branch name',
-    action: () => clipboard.writeText(name),
+    action: () => clipboard.writeText(branch.name),
   })
 
   if (onViewBranchOnGitHub !== undefined) {
@@ -57,7 +56,7 @@ export function generateBranchContextMenuItems(
       label: __DARWIN__
         ? 'Checkout in New Worktree…'
         : 'Checkout in new worktree…',
-      action: () => onCheckoutInNewWorktree(name),
+      action: () => onCheckoutInNewWorktree(branch),
     })
   }
 
@@ -66,7 +65,7 @@ export function generateBranchContextMenuItems(
   if (onDeleteBranch !== undefined) {
     items.push({
       label: 'Delete…',
-      action: () => onDeleteBranch(name),
+      action: () => onDeleteBranch(branch.name),
     })
   }
 

@@ -50,7 +50,7 @@ interface IBranchesContainerProps {
   readonly pullRequests: ReadonlyArray<PullRequest>
   readonly onRenameBranch: (branchName: string) => void
   readonly onDeleteBranch: (branchName: string) => void
-  readonly onCheckoutInNewWorktree?: (branchName: string) => void
+  readonly onCheckoutInNewWorktree?: (branch: Branch) => void
 
   /** Optional callback to checkout a PR in a new worktree */
   readonly onCheckoutPRInNewWorktree?: (pullRequest: PullRequest) => void

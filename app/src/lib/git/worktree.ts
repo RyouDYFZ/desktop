@@ -68,17 +68,13 @@ export async function addWorktree(
   repository: Repository,
   path: string,
   options: {
-    readonly branch?: string
+    /** Branch name used with -b (create new branch) */
     readonly createBranch?: string
-    readonly detach?: boolean
+    /** Commit-ish to check out (branch name, ref, or SHA) */
     readonly commitish?: string
   } = {}
 ): Promise<void> {
   const args = ['worktree', 'add']
-
-  if (options.detach) {
-    args.push('--detach')
-  }
 
   if (options.createBranch) {
     args.push('-b', options.createBranch)
@@ -86,9 +82,6 @@ export async function addWorktree(
 
   args.push(path)
 
-  if (options.branch) {
-    args.push(options.branch)
-  }
   if (options.commitish) {
     args.push(options.commitish)
   }
