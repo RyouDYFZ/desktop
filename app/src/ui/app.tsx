@@ -3490,15 +3490,17 @@ export class App extends React.Component<IAppProps, IAppState> {
 
     const { worktrees } = selection.state
 
-    // Only show the worktree dropdown when there are linked worktrees
-    if (worktrees.length <= 1) {
-      return null
-    }
-
     const currentFoldout = this.state.currentFoldout
 
     const isOpen =
       currentFoldout !== null && currentFoldout.type === FoldoutType.Worktree
+
+    // Only show the worktree dropdown when there are linked worktrees or if the
+    // foldout is open. This allows the user to create a worktree from the app
+    // menu even when there are no worktrees.
+    if (worktrees.length <= 1 && !isOpen) {
+      return null
+    }
 
     const repository = selection.repository
 

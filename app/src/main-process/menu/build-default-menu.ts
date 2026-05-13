@@ -384,8 +384,9 @@ export function buildDefaultMenu({
       separator,
       {
         id: 'create-worktree',
-        label: __DARWIN__ ? 'New Worktree…' : 'New &worktree…',
+        label: __DARWIN__ ? 'New Worktree…' : 'New work&tree…',
         click: emit('create-worktree'),
+        accelerator: 'CmdOrCtrl+Shift+W',
       },
       separator,
       {
