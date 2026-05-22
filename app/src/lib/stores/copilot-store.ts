@@ -37,6 +37,7 @@ import { pathToFileURL } from 'url'
 import { randomBytes } from 'crypto'
 import { BaseStore } from './base-store'
 import { IRepoRulesMetadataRule } from '../../models/repo-rules'
+import { pathExists } from '../path-exists'
 
 /** The default model ID used for Copilot commit message generation. */
 export const DefaultCopilotModel = 'gpt-5-mini'
@@ -428,6 +429,13 @@ export class CopilotStore extends BaseStore {
     if (__WIN32__) {
       // On Windows, we need the import path to be a valid file:// URL.
       importPath = pathToFileURL(importPath).href
+    }
+
+    // Make sure the import path exists before creating the client, so we don't
+    // end up with a half-broken client that can't start.
+    const exists = await pathExists(importPath)
+    if (!exists) {
+      throw new Error('Cannot create Copilot client: CLI entry point not found')
     }
 
     return new CopilotClient({
@@ -847,12 +855,16 @@ export class CopilotStore extends BaseStore {
       return this.modelsInFlight
     }
 
-    this.modelsInFlight = this.fetchModels()
     try {
+      this.modelsInFlight = this.fetchModels()
       return await this.modelsInFlight
+    } catch (e) {
+      log.warn('CopilotStore: Failed to fetch and cache models', e)
     } finally {
       this.modelsInFlight = null
     }
+
+    return null
   }
 
   private async fetchModels(): Promise<ReadonlyArray<ModelInfo> | null> {
