@@ -126,6 +126,7 @@ export class AddWorktreeDialog extends React.Component<
       return
     }
 
+    dispatcher.incrementMetric('worktreeCreatedCount')
     await dispatcher.switchWorktree(repository, worktree)
 
     this.setState({ creating: false })

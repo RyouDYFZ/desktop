@@ -4035,6 +4035,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     try {
       const worktrees = await listWorktrees(repository)
       this.repositoryStateCache.update(repository, () => ({ worktrees }))
+      this.statsStore.recordWorktreeCount(worktrees.length)
       this.emitUpdate()
     } catch (e) {
       log.error('Failed to refresh worktrees', e)
@@ -5700,6 +5701,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     await this._selectRepository(result.repository)
 
+    this.statsStore.increment('worktreeSwitchCount')
+
     return result.repository
   }
 
@@ -5740,6 +5743,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     await this._refreshWorktrees(repository)
+    this.statsStore.increment('worktreeDeletedCount')
   }
 
   public _setWorktreeDropdownWidth(width: number): Promise<void> {
