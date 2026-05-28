@@ -27,10 +27,6 @@ interface IOcticonProps {
   readonly tooltipDirection?: TooltipDirection
 
   readonly height?: number
-
-  readonly focusable?: boolean
-
-  readonly role?: string
 }
 
 /**
@@ -87,15 +83,13 @@ export class Octicon extends React.Component<IOcticonProps, {}> {
 
     return (
       <svg
-        role={this.props.role}
         aria-hidden={ariaHidden}
-        focusable={this.props.focusable ? 'true' : undefined}
         aria-label={title}
         className={className}
         version="1.1"
         viewBox={viewBox}
         ref={this.svgRef}
-        tabIndex={this.props.focusable ? undefined : -1}
+        tabIndex={-1}
         height={height}
         width={width}
       >
