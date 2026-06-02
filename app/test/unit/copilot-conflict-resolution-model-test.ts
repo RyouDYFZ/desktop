@@ -168,6 +168,31 @@ describe('getConflictResolutionModelDisplay', () => {
     })
   })
 
+  it('shows BYOK model names verbatim without stripping parentheticals', () => {
+    const provider: IBYOKProvider = {
+      ...byokProvider,
+      models: [
+        {
+          id: 'custom-c',
+          name: 'Custom C (Deep reasoning)',
+          reasoningEffort: 'high',
+        },
+      ],
+    }
+    const selection = encodeModelKey({
+      kind: 'byok',
+      providerId: 'provider-1',
+      modelId: 'custom-c',
+    })
+    const result = getConflictResolutionModelDisplay(selection, copilotModels, [
+      provider,
+    ])
+    assert.deepStrictEqual(result, {
+      modelName: 'Custom C (Deep reasoning)',
+      reasoningEffort: 'high',
+    })
+  })
+
   it('falls back to the default model when the BYOK selection is missing', () => {
     const selection = encodeModelKey({
       kind: 'byok',

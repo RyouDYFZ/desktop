@@ -34,10 +34,8 @@ export function getConflictResolutionModelDisplay(
     const provider = byokProviders.find(p => p.id === key.providerId)
     const model = provider?.models.find(m => m.id === key.modelId)
     if (model !== undefined) {
-      return {
-        modelName: cleanModelName(model.name),
-        reasoningEffort: model.reasoningEffort,
-      }
+      // BYOK names are user-provided, so show them verbatim.
+      return { modelName: model.name, reasoningEffort: model.reasoningEffort }
     }
     // Deleted provider/model — fall back to the default built-in model below.
   }

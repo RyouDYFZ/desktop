@@ -12,7 +12,7 @@ import * as octicons from '../../octicons/octicons.generated'
 import { MultiCommitOperationKind } from '../../../models/multi-commit-operation'
 import { AriaLiveContainer } from '../../accessibility/aria-live-container'
 import { IConflictResolutionModelDisplay } from '../../../lib/copilot/conflict-resolution-model'
-import { formatReasoningEffort } from '../../copilot/edit-byok-provider-dialog'
+import { formatReasoningEffort } from '../../../lib/stores/copilot-store'
 
 interface ICopilotConflictsLoadingDialogProps {
   readonly repository: Repository

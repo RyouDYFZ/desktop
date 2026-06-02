@@ -97,6 +97,14 @@ export type CopilotModelRequest =
 /** Copilot features that support per-model selection. */
 export type CopilotFeature = 'commit-message-generation' | 'conflict-resolution'
 
+/** Concrete session config produced by resolving a {@link CopilotModelRequest}. */
+interface IResolvedConflictModelConfig {
+  readonly modelId: string
+  readonly reasoningEffort: ReasoningEffort | undefined
+  readonly provider: CopilotProviderConfig | undefined
+  readonly timeoutMs: number | undefined
+}
+
 /**
  * Per-feature model selections. An absent key means the default model
  * will be used for that feature.
@@ -314,6 +322,20 @@ ${diffBlock}`
 export const ReasoningEffortOrder = ['low', 'medium', 'high', 'xhigh'] as const
 
 export type ReasoningEffort = typeof ReasoningEffortOrder[number]
+
+/** Formats a reasoning effort for display, e.g. 'xhigh' → 'Extra high'. */
+export function formatReasoningEffort(effort: ReasoningEffort): string {
+  switch (effort) {
+    case 'low':
+      return 'Low'
+    case 'medium':
+      return 'Medium'
+    case 'high':
+      return 'High'
+    case 'xhigh':
+      return 'Extra high'
+  }
+}
 
 /**
  * Returns the lowest reasoning effort supported by the given model, or
@@ -658,12 +680,7 @@ export class CopilotStore extends BaseStore {
    */
   private async resolveConflictModelConfig(
     request: CopilotModelRequest | null | undefined
-  ): Promise<{
-    modelId: string
-    reasoningEffort: ReasoningEffort | undefined
-    provider: CopilotProviderConfig | undefined
-    timeoutMs: number | undefined
-  }> {
+  ): Promise<IResolvedConflictModelConfig> {
     if (request && request.kind === 'byok') {
       return {
         modelId: request.modelId,
@@ -841,12 +858,7 @@ export class CopilotStore extends BaseStore {
     client: CopilotClient,
     prompt: string,
     expectedFiles: ReadonlyArray<IFileConflictContext>,
-    modelConfig: {
-      modelId: string
-      reasoningEffort: ReasoningEffort | undefined
-      provider: CopilotProviderConfig | undefined
-      timeoutMs: number | undefined
-    },
+    modelConfig: IResolvedConflictModelConfig,
     onReasoningSnippet?: (snippet: string) => void
   ): Promise<ReadonlyArray<IFileResolution>> {
     const expectedPaths = new Set(expectedFiles.map(f => f.path))
