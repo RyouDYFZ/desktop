@@ -10,6 +10,7 @@ import { Button } from '../../lib/button'
 import { Octicon } from '../../octicons'
 import * as octicons from '../../octicons/octicons.generated'
 import { MultiCommitOperationKind } from '../../../models/multi-commit-operation'
+import { AriaLiveContainer } from '../../accessibility/aria-live-container'
 
 interface ICopilotConflictsLoadingDialogProps {
   readonly repository: Repository
@@ -374,6 +375,10 @@ export class CopilotConflictsLoadingDialog extends React.Component<
   public render() {
     const { displayedMessages, theme } = this.state
     const { operationKind } = this.props
+    const latestMessage =
+      displayedMessages.length > 0
+        ? displayedMessages[displayedMessages.length - 1]
+        : null
 
     return (
       <Dialog
@@ -419,6 +424,8 @@ export class CopilotConflictsLoadingDialog extends React.Component<
                 </p>
               ))}
             </div>
+            <AriaLiveContainer message={latestMessage} />
+            <AriaLiveContainer message={ThemeLabels[theme]} />
           </div>
         </DialogContent>
         <DialogFooter>

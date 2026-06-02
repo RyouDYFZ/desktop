@@ -54,6 +54,7 @@ dialog#copilot-conflicts-loading {
       align-items: center;
       gap: var(--spacing-half);
       color: var(--text-color);
+      font-weight: var(--font-weight-semibold);
 
       .copilot-conflicts-loading-theme-icon {
         width: 16px;

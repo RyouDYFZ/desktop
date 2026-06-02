@@ -47,6 +47,13 @@ export interface IMultiCommitOperationProps {
   readonly cachedRepoRulesets: ReadonlyMap<number, IAPIRepoRuleset>
 
   /**
+   * Whether to show the "New" call-to-action bubble on the
+   * "Resolve with Copilot" entry button. False after the user has
+   * clicked the button at least once.
+   */
+  readonly shouldShowCopilotConflictResolutionCallOut: boolean
+
+  /**
    * Callbacks for the conflict selection components to let the user jump out
    * to their preferred editor.
    */
@@ -75,18 +82,10 @@ export abstract class BaseMultiCommitOperation extends React.Component<IMultiCom
       return
     }
 
-    const { conflictState } = step
-    dispatcher.setMultiCommitOperationStepWithCopilotResolution(
-      repository,
-      {
-        kind: MultiCommitOperationStepKind.ShowCopilotConflictsLoading,
-        conflictState,
-      },
-      true
-    )
-
-    // Fire-and-forget: the orchestrator handles transitions on success/failure
-    dispatcher.startCopilotConflictResolution(repository)
+    // Pre-flight handles account check, first-click tracking, and the
+    // AI-tool disclaimer (shown on first use + every 30 days). On clean
+    // pass it transitions to the loading step and runs the resolution.
+    dispatcher.attemptCopilotConflictResolution(repository)
   }
 
   protected onFlowEnded = () => {
@@ -266,6 +265,10 @@ export abstract class BaseMultiCommitOperation extends React.Component<IMultiCom
           <ConflictsDialog
             dispatcher={dispatcher}
             repository={repository}
+            accounts={this.props.accounts}
+            shouldShowCopilotConflictResolutionCallOut={
+              this.props.shouldShowCopilotConflictResolutionCallOut
+            }
             workingDirectory={workingDirectory}
             userHasResolvedConflicts={userHasResolvedConflicts}
             resolvedExternalEditor={resolvedExternalEditor}
