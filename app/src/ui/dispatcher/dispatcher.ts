@@ -132,8 +132,9 @@ import { isAbsolute } from 'path'
 import { CLIAction } from '../../lib/cli-action'
 import { BypassReasonType } from '../secret-scanning/bypass-push-protection-dialog'
 import {
-  ICopilotConflictResolutionResponse,
   IConflictResolutionProgress,
+  IFileResolution,
+  ICopilotResolutionSummary,
 } from '../../lib/copilot-conflict-resolution'
 import { WorktreeEntry } from '../../models/worktree'
 
@@ -1167,7 +1168,10 @@ export class Dispatcher {
   public resolveConflictsWithCopilot(
     repository: Repository,
     onProgress?: (progress: IConflictResolutionProgress) => void
-  ): Promise<ICopilotConflictResolutionResponse | null> {
+  ): Promise<{
+    readonly resolutions: ReadonlyArray<IFileResolution>
+    readonly summary: ICopilotResolutionSummary
+  } | null> {
     return this.appStore._resolveConflictsWithCopilot(repository, onProgress)
   }
 

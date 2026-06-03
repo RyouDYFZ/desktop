@@ -1,6 +1,11 @@
 import isPlainObject from 'lodash/isPlainObject'
 
-import { IFileConflictContext } from './copilot-conflict-context'
+import {
+  IConflictContextCommit,
+  IConflictContextPullRequest,
+  IConflictResolutionContext,
+  IFileConflictContext,
+} from './copilot-conflict-context'
 
 // ---------------------------------------------------------------------------
 // Types & interfaces
@@ -16,10 +21,93 @@ export interface IFileResolution {
   readonly reasoning: string
 }
 
+/** A reference the model considered material to its decision. */
+export interface ICopilotConflictReference {
+  /** Discriminant: pull request or commit. */
+  readonly type: 'pullRequest' | 'commit'
+  /**
+   * Identifier for the reference. For pull requests this is the decimal
+   * pull-request number (no leading `#`). For commits this is a short or
+   * full SHA in hex.
+   */
+  readonly id: string
+}
+
 /** Complete response from Copilot conflict resolution. */
 export interface ICopilotConflictResolutionResponse {
   /** Resolution suggestions, one per conflicted file. */
   readonly resolutions: ReadonlyArray<IFileResolution>
+  /**
+   * Optional markdown summary of the conflict and the resolution strategy.
+   * The system prompt requires the model to include exactly two `###`
+   * headings — `### Conflicting changes` and `### Resolution` — but a
+   * missing or malformed value is *not* treated as a fatal error so we
+   * preserve the existing happy path.
+   */
+  readonly summary: string | null
+  /**
+   * Pull requests and commits the model considered material to its
+   * decision. May be empty when the model omitted the field or none of
+   * its references resolve.
+   */
+  readonly references: ReadonlyArray<ICopilotConflictReference>
+}
+
+/**
+ * A reference the model cited, resolved against the gathered context so
+ * the dialog can render a real title and link. Because the model can
+ * only ever cite data we placed in the prompt (its session has no tools),
+ * every rendered reference is one of the entries we already gathered.
+ */
+export type IConflictContextReference =
+  | {
+      readonly kind: 'pullRequest'
+      readonly pullRequest: IConflictContextPullRequest
+    }
+  | {
+      readonly kind: 'commit'
+      readonly commit: IConflictContextCommit
+    }
+
+/**
+ * A source id the model can cite inline in its summary prose (a pull
+ * request number or a commit SHA) paired with the github.com URL we
+ * gathered for it. The dialog uses these to turn the plain `#1234` /
+ * `abc1234` tokens the model writes into real, clickable links — the
+ * model itself never emits URLs.
+ */
+export interface IConflictSourceLink {
+  readonly kind: 'pullRequest' | 'commit'
+  /** Pull-request number as a string, or the full commit SHA (lowercased). */
+  readonly id: string
+  /** github.com URL for the source. */
+  readonly url: string
+}
+
+/**
+ * The full set of context needed to render the resolution-summary card in
+ * the conflict resolution dialog. Bundled together so we capture it once
+ * while the data is fresh and hand it to the dialog as a single prop.
+ */
+export interface ICopilotResolutionSummary {
+  /** Markdown text written by Copilot. Null when the model omitted it. */
+  readonly markdown: string | null
+  /** Display label for the *ours* (current) side. */
+  readonly ourLabel: string
+  /** Display label for the *theirs* (incoming) side. */
+  readonly theirLabel: string
+  /**
+   * Curated list of references the model used when making its decision,
+   * resolved against the gathered context. The dialog renders these as
+   * the "Context" list.
+   */
+  readonly references: ReadonlyArray<IConflictContextReference>
+  /**
+   * Every gathered pull request and commit that has a URL, keyed by the
+   * id the model would cite, so the dialog can linkify the source ids
+   * (`#1234` / `abc1234`) that appear inline in the summary prose.
+   */
+  readonly sourceLinks: ReadonlyArray<IConflictSourceLink>
 }
 
 /** Progress information emitted during conflict resolution. */
@@ -69,6 +157,8 @@ export const MaxConcurrentChunks = 5
 export const ConflictResolutionSystemPrompt = `
 You have all the context you need below. Do NOT attempt to use tools. Respond ONLY with the JSON format specified.
 
+Custom instructions take priority. If this repository or the user has provided Copilot custom instructions (they appear in this session's context), you MUST follow them where they affect the wording, tone, or level of detail of your summary and per-file reasoning — even when they ask for more or less detail than the guidance below. The ONLY things custom instructions may never change are the structural requirements: always return exactly the JSON schema below, keep the summary to the two specified headings in order, attribute sides by "#1234"/short SHA, and never add URLs or extra sections.
+
 You are an expert Git conflict resolver. Your task is to analyze conflicts from merge, rebase, or cherry-pick operations and produce correct, clean resolutions.
 
 You will receive:
@@ -81,7 +171,8 @@ You will receive:
 Your job:
 1. Understand the INTENT behind each side's changes using commit messages and PR context when available
 2. Resolve each conflict by producing the correct merged content
-3. Explain your reasoning for each resolution
+3. Explain your per-file reasoning — what you kept and what you dropped or overrode in each file
+4. Produce a brief, skimmable markdown summary that orients the user to the conflict and your resolution at a glance
 
 Resolution guidelines:
 - Make the MINIMAL changes necessary to resolve the conflict — do not refactor, reformat, or alter code outside the conflicted regions
@@ -93,11 +184,17 @@ Resolution guidelines:
 
 You MUST respond with valid JSON in this exact format:
 {
+  "summary": "### Conflicting changes\\n<1-2 sentences of natural prose explaining what each side was doing and where they collided, attributing each side to its #PR or short SHA>\\n\\n### Resolution\\n<1 short sentence on how and why you resolved it; if a side's change was dropped or overridden, add one short **bold** clause naming that single trade-off>",
+  "references": [
+    { "type": "pullRequest", "id": "1234" },
+    { "type": "pullRequest", "id": "1250" },
+    { "type": "commit", "id": "abc1234" }
+  ],
   "resolutions": [
     {
       "path": "relative/file/path.ts",
       "resolvedContent": "the complete resolved file content with all conflicts resolved",
-      "reasoning": "explanation of how you resolved each conflict and why"
+      "reasoning": "per-file audit detail: what each side changed in THIS file, what you kept, and specifically what you dropped or overrode and why. This is the home for the granular detail — be concrete here so the user can verify this file's resolution"
     }
   ]
 }
@@ -106,6 +203,28 @@ Important:
 - resolvedContent must contain the COMPLETE file content (not just the conflicted sections)
 - All conflict markers must be removed in the resolved content
 - Include one resolution entry per conflicted file
+
+Summary rules (read carefully — the summary is a brief banner rendered as markdown above the per-file resolutions; it must be skimmable in a few seconds):
+- The summary value MUST be a single markdown string with exactly two level-3 headings, in this order: "### Conflicting changes" and "### Resolution"
+- Write in natural, flowing prose — full sentences a developer would say to a teammate, NOT a terse list of identifiers. The summary should read like English, not like code with words between the symbols
+- Brevity is the priority: prefer the shortest wording that still lets a reader verify the decision. Do NOT enumerate every kept item, and do NOT describe which files merged mechanically — that granular, per-file detail belongs in each resolution's "reasoning", not here
+- "Conflicting changes": 1-2 sentences describing, in plain language, what each side was doing and where they collided. When many files conflicted, summarize them ("several menu components") rather than listing every filename. Attribute the incoming change to its "#1234" or short SHA, and the current side likewise
+- "Resolution": 1 short sentence on how and why you resolved it. If — and only if — a side's change was dropped or overridden, add one short clause naming that single most important trade-off and wrap it in **double asterisks** so it stands out
+- Use backticks SPARINGLY — only for the one or two code identifiers (a function, type, or constant) that are genuinely central to the conflict. Do NOT wrap filenames, lists of files, branch names, side labels, or ordinary words in backticks; write those as plain prose. Backticked identifiers are not links — only "#1234" and short SHAs become links
+- Refer to a side by its "#1234"/short SHA or as "the current branch" / "the incoming change" — never wrap a branch name or side label in backticks
+- Refer to pull requests by id only — write "#1234" (no link, no URL). Refer to commits by their short SHA — write "abc1234" (no link, no URL). The application turns these into links itself. Attribute each side to its source id at most once; the Context list already lists them, so do not repeat the same id in every sentence
+- Do NOT include a third section, a "References" / "Links" section, or any URLs — those are rendered separately by the application
+- Use plain language. Do not name the speaker or address the user as "you" — write "the current branch", not "your branch"
+
+References rules (these populate the "Context" list — the user's map to the human story behind the conflict):
+- Goal: give the user the handful of references they would want to open to understand the conflict and check your resolution — typically a few items, not just one or two, but not an exhaustive dump of everything in context.
+- Include the pull requests behind the conflicting changes, and the commits whose messages add genuine human context (a clear description of intent or rationale).
+- Do not artificially limit yourself to one or two entries: when several pull requests or commits are each genuinely informative, include all of them.
+- Do not pad either: skip anything that does not help a human understand what changed or why.
+- Omit noise outright: merge commits, "WIP"/"fixup"/"squash"/"amend" commits, and commits with empty or low-signal messages.
+- When a commit is the squash/merge of a pull request that is also present, cite the pull request instead (never both).
+- "type" must be "pullRequest" or "commit"; "id" is a decimal pull-request number for PRs (no "#" prefix) or a short or full hex SHA for commits
+- Cite each item at most once. Only return an empty array when the context contains no pull requests and no commits at all; whenever any are present, cite at least the single most informative one
 `
 
 // ---------------------------------------------------------------------------
@@ -180,7 +299,7 @@ export function parseCopilotConflictResolution(
   }
 
   const obj = parsed as Record<string, unknown>
-  const { resolutions } = obj
+  const { resolutions, summary: rawSummary, references: rawReferences } = obj
 
   if (!Array.isArray(resolutions)) {
     throw new CopilotValidationError(
@@ -192,6 +311,41 @@ export function parseCopilotConflictResolution(
     throw new CopilotValidationError(
       'Copilot returned an invalid conflict resolution payload: "resolutions" must not be empty'
     )
+  }
+
+  // Soft-fail summary: it's a nice-to-have, not a critical part of the
+  // contract. If the model omits it or returns the wrong shape we still
+  // ship a usable resolution.
+  const summary =
+    typeof rawSummary === 'string' && rawSummary.trim().length > 0
+      ? rawSummary
+      : null
+
+  // Soft-fail references the same way. Drop any entry whose shape we don't
+  // recognize; never throw — a curated context list is a polish, not a
+  // gate on shipping resolutions.
+  const references: Array<ICopilotConflictReference> = []
+  if (Array.isArray(rawReferences)) {
+    for (const entry of rawReferences) {
+      if (!isPlainObject(entry)) {
+        continue
+      }
+      const { type, id } = entry as Record<string, unknown>
+      if (type !== 'pullRequest' && type !== 'commit') {
+        continue
+      }
+      if (typeof id !== 'string' || id.trim().length === 0) {
+        continue
+      }
+      const trimmed = id.trim().replace(/^#/, '')
+      if (type === 'pullRequest' && !/^\d{1,9}$/.test(trimmed)) {
+        continue
+      }
+      if (type === 'commit' && !/^[0-9a-f]{4,40}$/i.test(trimmed)) {
+        continue
+      }
+      references.push({ type, id: trimmed })
+    }
   }
 
   const validated: Array<IFileResolution> = []
@@ -235,7 +389,7 @@ export function parseCopilotConflictResolution(
     validated.push({ path: normalizeLLMPath(path), resolvedContent, reasoning })
   }
 
-  return { resolutions: validated }
+  return { resolutions: validated, summary, references }
 }
 
 /**
@@ -274,6 +428,214 @@ export function validateResolutionPaths(
       `Copilot did not return resolutions for: ${missingPaths.join(', ')}`
     )
   }
+}
+
+/**
+ * Extract a trailing pull-request number from a commit summary, e.g.
+ * "Add multilingual greetings (#20)" -> 20. Returns null when no
+ * `(#N)` suffix is present.
+ */
+function extractPullRequestNumberFromCommitSummary(
+  summary: string
+): number | null {
+  const match = /\(#(\d+)\)\s*$/.exec(summary)
+  if (match === null) {
+    return null
+  }
+  const n = Number.parseInt(match[1], 10)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Minimum length required to resolve a commit reference by SHA prefix. */
+const MinShaPrefixLength = 7
+
+/**
+ * Resolve the model's raw reference list against the gathered context,
+ * producing display-ready entries for the dialog's "Context" list.
+ *
+ * The Copilot session has no tools, so it can only cite data we placed in
+ * the prompt — every entry here is therefore one of the PRs or commits we
+ * already gathered. References we can't match (a hallucinated or mistyped
+ * id) are dropped rather than rendered as placeholders.
+ *
+ * When the model cites a commit that is itself a squash/merge of a pull
+ * request (detected by a trailing `(#N)` in its summary) and we gathered
+ * that PR, we surface the PR instead — its title and body carry far more
+ * human context than the merge commit. Entries are de-duplicated on their
+ * final identity so a PR and its merge commit collapse into one row.
+ */
+export function selectReferencedContext(
+  references: ReadonlyArray<ICopilotConflictReference>,
+  context: IConflictResolutionContext
+): ReadonlyArray<IConflictContextReference> {
+  const prByNumber = new Map<number, IConflictContextPullRequest>()
+  for (const pr of [...context.ourPullRequests, ...context.theirPullRequests]) {
+    prByNumber.set(pr.number, pr)
+  }
+
+  const commitBySha = new Map<string, IConflictContextCommit>()
+  for (const commit of [...context.ourCommits, ...context.theirCommits]) {
+    commitBySha.set(commit.sha.toLowerCase(), commit)
+  }
+
+  const selected: Array<IConflictContextReference> = []
+  const seenPrs = new Set<number>()
+  const seenCommits = new Set<string>()
+
+  const pushPullRequest = (prNumber: number): void => {
+    if (seenPrs.has(prNumber)) {
+      return
+    }
+    const pr = prByNumber.get(prNumber)
+    if (pr === undefined) {
+      return
+    }
+    seenPrs.add(prNumber)
+    selected.push({ kind: 'pullRequest', pullRequest: pr })
+  }
+
+  for (const ref of references) {
+    if (ref.type === 'pullRequest') {
+      const prNumber = Number.parseInt(ref.id, 10)
+      if (Number.isFinite(prNumber)) {
+        pushPullRequest(prNumber)
+      }
+      continue
+    }
+
+    const matched = findCommitByRef(ref.id, commitBySha)
+    if (matched === null) {
+      continue
+    }
+
+    // Promote a merge/squash commit to its pull request when we have it.
+    const prFromSummary = extractPullRequestNumberFromCommitSummary(
+      matched.summary
+    )
+    if (prFromSummary !== null && prByNumber.has(prFromSummary)) {
+      pushPullRequest(prFromSummary)
+      continue
+    }
+
+    if (seenCommits.has(matched.sha)) {
+      continue
+    }
+    seenCommits.add(matched.sha)
+    selected.push({ kind: 'commit', commit: matched })
+  }
+
+  return selected
+}
+
+/** Commit summaries that carry no human context worth surfacing. */
+const lowSignalCommitSummary = /^(merge |wip\b|fixup!|squash!|amend\b)/i
+
+function isMeaningfulCommit(commit: IConflictContextCommit): boolean {
+  const summary = commit.summary.trim()
+  return summary.length > 0 && !lowSignalCommitSummary.test(summary)
+}
+
+/**
+ * Guarantee the "Context" list is never empty when we actually gathered
+ * material to show. The model curates references, but it occasionally
+ * returns none even though a conflict always traces back to at least one
+ * commit. This deterministic floor surfaces the single most informative
+ * item we have — preferring a pull request, then a commit with a
+ * human-readable message, then any commit as a last resort — and favours
+ * the incoming (theirs) side since that is the change being brought in.
+ *
+ * It is only consulted when {@linkcode selectReferencedContext} yields
+ * nothing, so a model that cites real references is never second-guessed.
+ */
+export function fallbackReferencedContext(
+  context: IConflictResolutionContext
+): ReadonlyArray<IConflictContextReference> {
+  const pr =
+    context.theirPullRequests.at(0) ?? context.ourPullRequests.at(0) ?? null
+  if (pr !== null) {
+    return [{ kind: 'pullRequest', pullRequest: pr }]
+  }
+
+  const commit =
+    context.theirCommits.find(isMeaningfulCommit) ??
+    context.ourCommits.find(isMeaningfulCommit) ??
+    context.theirCommits.at(0) ??
+    context.ourCommits.at(0) ??
+    null
+  if (commit !== null) {
+    return [{ kind: 'commit', commit }]
+  }
+
+  return []
+}
+
+/**
+ * Flatten the gathered context into the id→URL list the dialog needs to
+ * linkify inline source citations in the summary prose. Includes every
+ * pull request and commit we have a URL for (the incoming/theirs side
+ * first), de-duplicated on id. Entries without a URL are skipped — there
+ * is nothing to link to.
+ */
+export function collectSourceLinks(
+  context: IConflictResolutionContext
+): ReadonlyArray<IConflictSourceLink> {
+  const links: Array<IConflictSourceLink> = []
+  const seen = new Set<string>()
+
+  for (const pr of [...context.theirPullRequests, ...context.ourPullRequests]) {
+    const id = String(pr.number)
+    const key = `pr:${id}`
+    if (pr.url === null || seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    links.push({ kind: 'pullRequest', id, url: pr.url })
+  }
+
+  for (const commit of [...context.theirCommits, ...context.ourCommits]) {
+    const id = commit.sha.toLowerCase()
+    const key = `commit:${id}`
+    if (commit.url === null || seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    links.push({ kind: 'commit', id, url: commit.url })
+  }
+
+  return links
+}
+
+/**
+ * Resolve a commit reference id (full or abbreviated SHA) against the
+ * gathered commits. Prefers an exact match; falls back to a unique prefix
+ * match of at least {@linkcode MinShaPrefixLength} characters. Returns
+ * null when nothing matches or a short prefix is ambiguous.
+ */
+function findCommitByRef(
+  id: string,
+  commitBySha: ReadonlyMap<string, IConflictContextCommit>
+): IConflictContextCommit | null {
+  const lower = id.toLowerCase()
+  const exact = commitBySha.get(lower)
+  if (exact !== undefined) {
+    return exact
+  }
+
+  if (lower.length < MinShaPrefixLength) {
+    return null
+  }
+
+  let match: IConflictContextCommit | null = null
+  for (const [sha, commit] of commitBySha) {
+    if (sha.startsWith(lower)) {
+      if (match !== null) {
+        // Ambiguous prefix — refuse to guess.
+        return null
+      }
+      match = commit
+    }
+  }
+  return match
 }
 
 /**
