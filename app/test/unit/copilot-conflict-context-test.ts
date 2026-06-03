@@ -19,7 +19,8 @@ function toResolutionContext(
   overrides: Partial<IConflictResolutionContext> = {}
 ): IConflictResolutionContext {
   return {
-    pullRequests: [],
+    ourPullRequests: [],
+    theirPullRequests: [],
     ourCommits: [],
     theirCommits: [],
     ...context,
@@ -35,6 +36,7 @@ function makeContextCommit(
     sha: shortSha.padEnd(40, '0'),
     shortSha,
     summary,
+    url: null,
     isOnRemote: false,
   }
 }
@@ -44,7 +46,7 @@ function makeContextPr(
   title: string,
   body: string
 ): IConflictContextPullRequest {
-  return { number: prNumber, title, body }
+  return { number: prNumber, title, body, url: null }
 }
 
 describe('copilot-conflict-context', () => {
@@ -639,7 +641,7 @@ describe('copilot-conflict-context', () => {
     it('includes PR context in output with body fenced', () => {
       const result = formatConflictContextForPrompt(
         toResolutionContext(baseContext, {
-          pullRequests: [
+          ourPullRequests: [
             makeContextPr(
               99,
               'Migrate to UUIDs',
@@ -663,7 +665,7 @@ describe('copilot-conflict-context', () => {
       // PR body with backticks should be wrapped in a fence
       const result2 = formatConflictContextForPrompt(
         toResolutionContext(baseContext, {
-          pullRequests: [
+          ourPullRequests: [
             makeContextPr(
               42,
               'Docs update',
@@ -677,10 +679,10 @@ describe('copilot-conflict-context', () => {
       assert.ok(result2.includes('````'))
     })
 
-    it('includes multiple PR titles and bodies', () => {
+    it('includes theirs-side PR titles and bodies', () => {
       const result = formatConflictContextForPrompt(
         toResolutionContext(baseContext, {
-          pullRequests: [
+          theirPullRequests: [
             makeContextPr(
               20,
               'Add multilingual greetings',
@@ -691,7 +693,9 @@ describe('copilot-conflict-context', () => {
         })
       )
 
-      assert.ok(result.includes('## Pull Request Context'))
+      assert.ok(
+        result.includes('## Pull Request Context (theirs: feature/uuids)')
+      )
       assert.ok(result.includes('PR #20: Add multilingual greetings'))
       assert.ok(
         result.includes(
@@ -706,7 +710,7 @@ describe('copilot-conflict-context', () => {
       const longBody = 'x'.repeat(5000)
       const result = formatConflictContextForPrompt(
         toResolutionContext(baseContext, {
-          pullRequests: [makeContextPr(7, 'Big PR', longBody)],
+          ourPullRequests: [makeContextPr(7, 'Big PR', longBody)],
         })
       )
 
@@ -717,7 +721,7 @@ describe('copilot-conflict-context', () => {
     it('omits PR description section when body is empty', () => {
       const result = formatConflictContextForPrompt(
         toResolutionContext(baseContext, {
-          pullRequests: [makeContextPr(10, 'Quick fix', '')],
+          ourPullRequests: [makeContextPr(10, 'Quick fix', '')],
         })
       )
 
