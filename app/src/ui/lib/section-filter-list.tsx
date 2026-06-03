@@ -48,7 +48,7 @@ interface ISectionFilterListProps<T extends IFilterListItem, GroupIdentifier> {
   readonly className?: string
 
   /** The height of the rows. */
-  readonly rowHeight: number
+  readonly rowHeight: number | ((info: { index: RowIndexPath }) => number)
 
   /** The ordered groups to display in the list. */
   // eslint-disable-next-line react/no-unused-prop-types

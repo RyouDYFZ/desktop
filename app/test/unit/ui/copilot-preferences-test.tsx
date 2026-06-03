@@ -187,6 +187,13 @@ describe('CopilotPreferences', () => {
     assert.ok(screen.getByText('GitHub Copilot'))
     assert.ok(screen.getAllByText('GPT-5 mini (1x) (default)').length >= 2)
     assert.ok(screen.getByText('Usage Billed Model'))
+    assert.ok(screen.getByText('AI credits per 1M tokens'))
+    assert.ok(screen.getByText('Input'))
+    assert.ok(screen.getByText('500'))
+    assert.ok(screen.getByText('Cached input'))
+    assert.ok(screen.getByText('50'))
+    assert.ok(screen.getByText('Output'))
+    assert.ok(screen.getByText('2500'))
   })
 
   it('renders a BYOK group per provider', async () => {

@@ -43,18 +43,54 @@
     display: flex;
     align-items: center;
     height: 100%;
+    width: 100%;
     min-width: 0;
-    padding: 0 var(--spacing) 0 calc(var(--spacing) + var(--spacing-half));
+    box-sizing: border-box;
+    padding: var(--spacing-half) var(--spacing) var(--spacing-half) calc(var(--spacing) + var(--spacing-half));
 
     .info {
       min-width: 0;
       flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-third);
     }
 
     .title {
       @include ellipsis;
       min-width: 0;
       font-weight: var(--font-weight-normal);
+    }
+
+    .copilot-model-billing {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+      line-height: 1.35;
+    }
+
+    .copilot-model-billing-heading {
+      @include ellipsis;
+      min-width: 0;
+    }
+
+    .copilot-model-billing-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: var(--spacing);
+    }
+
+    .copilot-model-billing-label {
+      @include ellipsis;
+      min-width: 0;
+    }
+
+    .copilot-model-billing-value {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
     }
   }
 

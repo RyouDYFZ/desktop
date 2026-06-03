@@ -4,10 +4,12 @@ import memoizeOne from 'memoize-one'
 import { DefaultCopilotModel } from '../../lib/stores/copilot-store'
 import { type IBYOKProvider, encodeModelKey } from '../../lib/copilot/byok'
 import {
+  type CopilotModelBilling,
   type CopilotModelInfo,
   getCopilotModelBillingMultiplier,
 } from '../../lib/copilot/model-info'
 import { IFilterListGroup, IFilterListItem } from './filter-list'
+import type { RowIndexPath } from './list/list-row-index-path'
 import { PopoverDropdown } from './popover-dropdown'
 import { SectionFilterList } from './section-filter-list'
 
@@ -29,18 +31,45 @@ interface ICopilotModelListItem extends IFilterListItem {
   readonly text: ReadonlyArray<string>
   readonly value: string
   readonly name: string
-  readonly billingMultiplier: number | undefined
+  readonly billing: CopilotModelBilling | undefined
   readonly isDefault: boolean
 }
 
-const getBillingLabel = (item: ICopilotModelListItem) =>
-  item.billingMultiplier === undefined ? '' : ` (${item.billingMultiplier}x)`
+const ModelPickerGroupHeaderRowHeight = 36
+const ModelPickerItemRowHeight = 104
+
+const getPremiumRequestsBillingLabel = (
+  billing: CopilotModelBilling | undefined
+) => {
+  const multiplier = getCopilotModelBillingMultiplier(billing)
+  return multiplier === undefined ? '' : ` (${multiplier}x)`
+}
 
 const getCopilotModelLabel = (item: ICopilotModelListItem) => {
-  const billingLabel = getBillingLabel(item)
+  const billingLabel = getPremiumRequestsBillingLabel(item.billing)
   return item.isDefault
     ? `${item.name}${billingLabel} (default)`
     : `${item.name}${billingLabel}`
+}
+
+const formatCompactNumber = (value: number) => {
+  if (Number.isInteger(value)) {
+    return value.toString()
+  }
+
+  return value.toFixed(1).replace(/\.0$/, '')
+}
+
+const formatTokenBatchSize = (tokenCount: number) => {
+  if (tokenCount >= 1_000_000) {
+    return `${formatCompactNumber(tokenCount / 1_000_000)}M`
+  }
+
+  if (tokenCount >= 1_000) {
+    return `${formatCompactNumber(tokenCount / 1_000)}K`
+  }
+
+  return tokenCount.toString()
 }
 
 const getCopilotModelGroups = (
@@ -65,7 +94,7 @@ const getCopilotModelGroups = (
           text: [model.name, model.id, providerName],
           value,
           name: model.name,
-          billingMultiplier: getCopilotModelBillingMultiplier(model.billing),
+          billing: model.billing,
           isDefault: model.id === DefaultCopilotModel,
         }
       }),
@@ -91,7 +120,7 @@ const getCopilotModelGroups = (
           text: [model.name, model.id, provider.name],
           value,
           name: model.name,
-          billingMultiplier: undefined,
+          billing: undefined,
           isDefault: false,
         }
       }),
@@ -169,11 +198,44 @@ export class CopilotModelPicker extends React.Component<
     this.setState({ selectedItemId: selectedItem?.id })
   }
 
+  private getRowHeight = ({ index }: { readonly index: RowIndexPath }) =>
+    index.row === 0 ? ModelPickerGroupHeaderRowHeight : ModelPickerItemRowHeight
+
+  private renderUsageBillingRow = (label: string, value: number) => {
+    return (
+      <div className="copilot-model-billing-row">
+        <span className="copilot-model-billing-label">{label}</span>
+        <span className="copilot-model-billing-value">{value}</span>
+      </div>
+    )
+  }
+
+  private renderUsageBilling = (billing: CopilotModelBilling | undefined) => {
+    if (billing?.kind !== 'usage') {
+      return null
+    }
+
+    const tokenPrices = billing.token_prices.default
+
+    return (
+      <div className="copilot-model-billing">
+        <div className="copilot-model-billing-heading">
+          AI credits per {formatTokenBatchSize(billing.token_prices.batch_size)}{' '}
+          tokens
+        </div>
+        {this.renderUsageBillingRow('Input', tokenPrices.input_price)}
+        {this.renderUsageBillingRow('Cached input', tokenPrices.cache_price)}
+        {this.renderUsageBillingRow('Output', tokenPrices.output_price)}
+      </div>
+    )
+  }
+
   private renderModel = (item: ICopilotModelListItem) => {
     return (
       <div className="copilot-model-list-item">
         <div className="info">
           <div className="title">{getCopilotModelLabel(item)}</div>
+          {this.renderUsageBilling(item.billing)}
         </div>
       </div>
     )
@@ -191,8 +253,21 @@ export class CopilotModelPicker extends React.Component<
     return <div className="copilot-model-list-empty">No models found.</div>
   }
 
-  private getItemAriaLabel = (item: ICopilotModelListItem) =>
-    getCopilotModelLabel(item)
+  private getItemAriaLabel = (item: ICopilotModelListItem) => {
+    const label = getCopilotModelLabel(item)
+    const billing = item.billing
+
+    if (billing?.kind !== 'usage') {
+      return label
+    }
+
+    const tokenPrices = billing.token_prices.default
+    return `${label}, AI credits per ${formatTokenBatchSize(
+      billing.token_prices.batch_size
+    )} tokens, Input ${tokenPrices.input_price}, Cached input ${
+      tokenPrices.cache_price
+    }, Output ${tokenPrices.output_price}`
+  }
 
   private getGroupAriaLabel = (group: number) => {
     const groups = this.getGroups(
@@ -232,7 +307,7 @@ export class CopilotModelPicker extends React.Component<
       >
         <SectionFilterList<ICopilotModelListItem>
           className="copilot-model-list"
-          rowHeight={36}
+          rowHeight={this.getRowHeight}
           groups={groups}
           selectedItem={selectedItem}
           renderItem={this.renderModel}
