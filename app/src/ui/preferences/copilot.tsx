@@ -5,7 +5,6 @@ import {
   parseModelKey,
   type IBYOKProvider,
 } from '../../lib/copilot/byok'
-import type { CopilotModelInfo } from '../../lib/copilot/model-info'
 import { enableCopilotConflictResolution } from '../../lib/feature-flag'
 import {
   DefaultCopilotModel,
@@ -16,17 +15,18 @@ import { DialogContent } from '../dialog'
 import { Button } from '../lib/button'
 import {
   CopilotModelPicker,
-  hasCopilotModelPickerItems
+  hasCopilotModelPickerItems,
 } from '../lib/copilot-model-picker'
 import { LinkButton } from '../lib/link-button'
 import { Row } from '../lib/row'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 import { TabBar } from '../tab-bar'
+import { ModelInfo } from '@github/copilot-sdk'
 
 interface ICopilotPreferencesProps {
   readonly selectedCopilotModels: CopilotModelSelections
-  readonly copilotModels: ReadonlyArray<CopilotModelInfo> | null
+  readonly copilotModels: ReadonlyArray<ModelInfo> | null
   readonly copilotAvailable: boolean
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
   readonly showBYOKSettings: boolean
@@ -60,13 +60,8 @@ export class CopilotPreferences extends React.Component<
     this.props.onSelectedCopilotModelChanged('commit-message-generation', model)
   }
 
-  private onConflictResolutionModelChanged = (
-    model: string
-  ) => {
-    this.props.onSelectedCopilotModelChanged(
-      'conflict-resolution',
-      model
-    )
+  private onConflictResolutionModelChanged = (model: string) => {
+    this.props.onSelectedCopilotModelChanged('conflict-resolution', model)
   }
 
   private onAddBYOKProviderClick = () => this.props.onAddBYOKProvider()
@@ -169,7 +164,7 @@ export class CopilotPreferences extends React.Component<
   }
 
   private renderFeatureModelPicker(
-    copilotModels: ReadonlyArray<CopilotModelInfo>,
+    copilotModels: ReadonlyArray<ModelInfo>,
     feature: CopilotFeature,
     label: string,
     onChange: (model: string) => void
@@ -184,18 +179,21 @@ export class CopilotPreferences extends React.Component<
     )
 
     return (
-              <CopilotModelPicker
-          label={label}
-          copilotModels={copilotModels}
-          byokProviders={byokProviders}
-          value={value}
-          onChange={onChange}
-        />
+      <CopilotModelPicker
+        label={label}
+        // HACK(copilot-sdk): this `as any` should be removed when we update to the
+        // fixed @github/copilot-sdk version that includes the new billing fields in
+        // the ModelInfo type
+        copilotModels={copilotModels as any}
+        byokProviders={byokProviders}
+        value={value}
+        onChange={onChange}
+      />
     )
   }
 
   private resolveSelectionValue(
-    copilotModels: ReadonlyArray<CopilotModelInfo>,
+    copilotModels: ReadonlyArray<ModelInfo>,
     byokProviders: ReadonlyArray<IBYOKProvider>,
     raw: string | null
   ): string {
@@ -218,7 +216,7 @@ export class CopilotPreferences extends React.Component<
   }
 
   private getFirstSelectableModelValue(
-    copilotModels: ReadonlyArray<CopilotModelInfo>,
+    copilotModels: ReadonlyArray<ModelInfo>,
     byokProviders: ReadonlyArray<IBYOKProvider>
   ): string {
     if (copilotModels.length === 0 && byokProviders.length === 0) {

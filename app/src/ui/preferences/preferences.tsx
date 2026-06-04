@@ -48,7 +48,6 @@ import type {
   CopilotModelSelections,
 } from '../../lib/stores/copilot-store'
 import type { IBYOKProvider } from '../../lib/copilot/byok'
-import type { CopilotModelInfo } from '../../lib/copilot/model-info'
 import { PopupType } from '../../models/popup'
 import {
   ICustomIntegration,
@@ -79,6 +78,7 @@ import {
   setNumberFormatPreference,
 } from '../../models/formatting-preferences'
 import { enableFormattingPreferences } from '../../lib/feature-flag'
+import { ModelInfo } from '@github/copilot-sdk'
 
 interface IPreferencesProps {
   readonly dispatcher: Dispatcher
@@ -114,7 +114,7 @@ interface IPreferencesProps {
   readonly underlineLinks: boolean
   readonly showDiffCheckMarks: boolean
   readonly selectedCopilotModels: CopilotModelSelections
-  readonly copilotModels: ReadonlyArray<CopilotModelInfo> | null
+  readonly copilotModels: ReadonlyArray<ModelInfo> | null
   readonly copilotAvailable: boolean
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
 }

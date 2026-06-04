@@ -3,19 +3,19 @@ import memoizeOne from 'memoize-one'
 
 import { DefaultCopilotModel } from '../../lib/stores/copilot-store'
 import { type IBYOKProvider, encodeModelKey } from '../../lib/copilot/byok'
-import {
-  type CopilotModelBilling,
-  type CopilotModelInfo,
-  getCopilotModelBillingMultiplier,
-} from '../../lib/copilot/model-info'
 import { IFilterListGroup, IFilterListItem } from './filter-list'
 import type { RowIndexPath } from './list/list-row-index-path'
 import { PopoverDropdown } from './popover-dropdown'
 import { SectionFilterList } from './section-filter-list'
+import {
+  Model,
+  ModelBilling,
+  ModelBillingTokenPricesLongContext,
+} from '@github/copilot-sdk/dist/generated/rpc'
 
 interface ICopilotModelPickerProps {
   readonly label: string
-  readonly copilotModels: ReadonlyArray<CopilotModelInfo>
+  readonly copilotModels: ReadonlyArray<Model>
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
   readonly value: string
   readonly onChange: (value: string) => void
@@ -31,17 +31,15 @@ interface ICopilotModelListItem extends IFilterListItem {
   readonly text: ReadonlyArray<string>
   readonly value: string
   readonly name: string
-  readonly billing: CopilotModelBilling | undefined
+  readonly billing: ModelBilling | undefined
   readonly isDefault: boolean
 }
 
 const ModelPickerGroupHeaderRowHeight = 36
 const ModelPickerItemRowHeight = 104
 
-const getPremiumRequestsBillingLabel = (
-  billing: CopilotModelBilling | undefined
-) => {
-  const multiplier = getCopilotModelBillingMultiplier(billing)
+const getPremiumRequestsBillingLabel = (billing: ModelBilling | undefined) => {
+  const multiplier = billing?.multiplier
   return multiplier === undefined ? '' : ` (${multiplier}x)`
 }
 
@@ -73,7 +71,7 @@ const formatTokenBatchSize = (tokenCount: number) => {
 }
 
 const getCopilotModelGroups = (
-  copilotModels: ReadonlyArray<CopilotModelInfo>,
+  copilotModels: ReadonlyArray<Model>,
   byokProviders: ReadonlyArray<IBYOKProvider>
 ): ReadonlyArray<IFilterListGroup<ICopilotModelListItem>> => {
   const groups = new Array<IFilterListGroup<ICopilotModelListItem>>()
@@ -131,7 +129,7 @@ const getCopilotModelGroups = (
 }
 
 export const hasCopilotModelPickerItems = (
-  copilotModels: ReadonlyArray<CopilotModelInfo>,
+  copilotModels: ReadonlyArray<Model>,
   byokProviders: ReadonlyArray<IBYOKProvider>
 ) =>
   copilotModels.length > 0 ||
@@ -210,22 +208,25 @@ export class CopilotModelPicker extends React.Component<
     )
   }
 
-  private renderUsageBilling = (billing: CopilotModelBilling | undefined) => {
-    if (billing?.kind !== 'usage') {
+  private renderUsageBilling = (billing: ModelBilling | undefined) => {
+    if (billing?.tokenPrices === undefined) {
       return null
     }
 
-    const tokenPrices = billing.tokenPrices.default
+    const tokenPrices: ModelBillingTokenPricesLongContext = billing.tokenPrices
 
     return (
       <div className="copilot-model-billing">
         <div className="copilot-model-billing-heading">
-          AI credits per {formatTokenBatchSize(billing.tokenPrices.batchSize)}{' '}
-          tokens
+          AI credits per{' '}
+          {formatTokenBatchSize(billing.tokenPrices.batchSize ?? 0)} tokens
         </div>
-        {this.renderUsageBillingRow('Input', tokenPrices.inputPrice)}
-        {this.renderUsageBillingRow('Cached input', tokenPrices.cachePrice)}
-        {this.renderUsageBillingRow('Output', tokenPrices.outputPrice)}
+        {this.renderUsageBillingRow('Input', tokenPrices.inputPrice ?? 0)}
+        {this.renderUsageBillingRow(
+          'Cached input',
+          tokenPrices.cachePrice ?? 0
+        )}
+        {this.renderUsageBillingRow('Output', tokenPrices.outputPrice ?? 0)}
       </div>
     )
   }
@@ -257,16 +258,17 @@ export class CopilotModelPicker extends React.Component<
     const label = getCopilotModelLabel(item)
     const billing = item.billing
 
-    if (billing?.kind !== 'usage') {
+    if (billing?.tokenPrices === undefined) {
       return label
     }
 
-    const tokenPrices = billing.tokenPrices.default
+    const tokenPrices: ModelBillingTokenPricesLongContext = billing.tokenPrices
+
     return `${label}, AI credits per ${formatTokenBatchSize(
-      billing.tokenPrices.batchSize
-    )} tokens, Input ${tokenPrices.inputPrice}, Cached input ${
-      tokenPrices.cachePrice
-    }, Output ${tokenPrices.outputPrice}`
+      billing.tokenPrices.batchSize ?? 0
+    )} tokens, Input ${tokenPrices.inputPrice ?? 0}, Cached input ${
+      tokenPrices.cachePrice ?? 0
+    }, Output ${tokenPrices.outputPrice ?? 0}`
   }
 
   private getGroupAriaLabel = (group: number) => {

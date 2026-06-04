@@ -11,11 +11,11 @@ import {
   encodeModelKey,
   type IBYOKProvider,
 } from '../../../src/lib/copilot/byok'
-import type { CopilotModelInfo } from '../../../src/lib/copilot/model-info'
+import { ModelInfo } from '@github/copilot-sdk'
 
 function makeModel(
-  overrides: Partial<CopilotModelInfo> & Pick<CopilotModelInfo, 'id' | 'name'>
-): CopilotModelInfo {
+  overrides: Partial<ModelInfo> & Pick<ModelInfo, 'id' | 'name'>
+): ModelInfo {
   return {
     capabilities: {
       supports: { vision: false, reasoningEffort: false },
@@ -28,33 +28,33 @@ function makeModel(
 const defaultModel = makeModel({
   id: DefaultCopilotModel,
   name: 'GPT-5 mini',
-  billing: { kind: 'premium-requests', multiplier: 1 },
+  billing: { multiplier: 1 },
 })
 
 const otherModel = makeModel({
   id: 'claude-sonnet',
   name: 'Claude Sonnet',
-  billing: { kind: 'premium-requests', multiplier: 2 },
+  billing: { multiplier: 2 },
 })
 
 const usageBilledModel = makeModel({
   id: 'usage-billed-model',
   name: 'Usage Billed Model',
   billing: {
-    kind: 'usage',
     tokenPrices: {
       batchSize: 1000000,
-      default: {
-        cachePrice: 50,
-        contentMax: 200000,
-        inputPrice: 500,
-        outputPrice: 2500,
-      },
+      cachePrice: 50,
+      contextMax: 200000,
+      inputPrice: 500,
+      outputPrice: 2500,
     },
-  },
+    // HACK(copilot-sdk): this `as any` should be removed when we update to the
+    // fixed @github/copilot-sdk version that includes the new billing fields in
+    // the ModelInfo type
+  } as any,
 })
 
-const models: ReadonlyArray<CopilotModelInfo> = [
+const models: ReadonlyArray<ModelInfo> = [
   defaultModel,
   otherModel,
   usageBilledModel,

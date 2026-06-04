@@ -6,6 +6,7 @@ import {
 import type {
   AssistantMessageEvent,
   MessageOptions,
+  ModelInfo,
   SessionConfig,
 } from '@github/copilot-sdk'
 import { AccountsStore } from './accounts-store'
@@ -43,12 +44,6 @@ import { BaseStore } from './base-store'
 import { IRepoRulesMetadataRule } from '../../models/repo-rules'
 import { pathExists } from '../path-exists'
 import { enableCopilotSdkCommitMessageGeneration } from '../feature-flag'
-import {
-  type CopilotModelInfo,
-  type ICopilotUsageBillingTokenPrice,
-  getCopilotModelBillingMultiplier,
-  normalizeCopilotModelInfo,
-} from '../copilot/model-info'
 
 /** The default model ID used for Copilot commit message generation. */
 export const DefaultCopilotModel = 'gpt-5-mini'
@@ -344,7 +339,7 @@ export function formatReasoningEffort(effort: ReasoningEffort): string {
  * undefined if the model does not support reasoning effort configuration.
  */
 export function getLowestReasoningEffort(
-  model: CopilotModelInfo
+  model: ModelInfo
 ): ReasoningEffort | undefined {
   const supported = model.supportedReasoningEfforts
   if (!supported || supported.length === 0) {
@@ -376,8 +371,8 @@ export function getSupportedReasoningEffort(
  * Returns null if the model list is empty.
  */
 export function getPreferredDefaultModel(
-  models: ReadonlyArray<CopilotModelInfo>
-): CopilotModelInfo | null {
+  models: ReadonlyArray<ModelInfo>
+): ModelInfo | null {
   if (models.length === 0) {
     return null
   }
@@ -392,56 +387,8 @@ export function getPreferredDefaultModel(
   // we don't accidentally pick a costly model.
   return [...models].sort(
     (a, b) =>
-      (getCopilotModelBillingMultiplier(a.billing) ?? Infinity) -
-      (getCopilotModelBillingMultiplier(b.billing) ?? Infinity)
+      (a.billing?.multiplier ?? Infinity) - (b.billing?.multiplier ?? Infinity)
   )[0]
-}
-
-const TemporaryMockUsageBillingBatchSize = 1_000_000
-
-const getTemporaryMockUsageBillingNumber = (
-  minimum: number,
-  maximum: number
-) => {
-  const range = maximum - minimum + 1
-  return minimum + (randomBytes(4).readUInt32BE(0) % range)
-}
-
-const getTemporaryMockUsageBillingTokenPrice = (
-  contextMinimum: number,
-  contextMaximum: number
-): ICopilotUsageBillingTokenPrice => ({
-  cachePrice: getTemporaryMockUsageBillingNumber(1, 100),
-  contentMax: getTemporaryMockUsageBillingNumber(
-    contextMinimum,
-    contextMaximum
-  ),
-  inputPrice: getTemporaryMockUsageBillingNumber(100, 1_000),
-  outputPrice: getTemporaryMockUsageBillingNumber(1_000, 5_000),
-})
-
-/**
- * Adds temporary mocked usage billing data for model picker UX testing.
- *
- * The Copilot SDK does not yet return usage billing metadata. Until it does,
- * overwrite fetched model billing with a `usage` billing object that has a
- * fixed batch size and random placeholder values everywhere else. Remove this
- * when the SDK returns real usage billing data.
- */
-export function getCopilotModelWithTemporaryMockUsageBilling(
-  model: CopilotModelInfo
-): CopilotModelInfo {
-  return {
-    ...model,
-    billing: {
-      kind: 'usage',
-      tokenPrices: {
-        batchSize: TemporaryMockUsageBillingBatchSize,
-        default: getTemporaryMockUsageBillingTokenPrice(100_000, 300_000),
-        longContext: getTemporaryMockUsageBillingTokenPrice(300_001, 1_000_000),
-      },
-    },
-  }
 }
 
 /**
@@ -648,10 +595,9 @@ export async function runConflictResolutionTurn(
 export class CopilotStore extends BaseStore {
   private currentAccount: Account | null = null
 
-  private cachedModels: ReadonlyArray<CopilotModelInfo> | null = null
+  private cachedModels: ReadonlyArray<ModelInfo> | null = null
   private modelsCachedAt: number = 0
-  private modelsInFlight: Promise<ReadonlyArray<CopilotModelInfo> | null> | null =
-    null
+  private modelsInFlight: Promise<ReadonlyArray<ModelInfo> | null> | null = null
 
   public constructor(private readonly accountsStore: AccountsStore) {
     super()
@@ -1226,7 +1172,7 @@ export class CopilotStore extends BaseStore {
    * Returns the last-fetched model list without triggering a refresh.
    * Null if models have never been fetched.
    */
-  public get cachedModelList(): ReadonlyArray<CopilotModelInfo> | null {
+  public get cachedModelList(): ReadonlyArray<ModelInfo> | null {
     return this.cachedModels
   }
 
@@ -1239,7 +1185,7 @@ export class CopilotStore extends BaseStore {
    * cache). Callers should distinguish this from an empty array, which
    * would mean Copilot legitimately reports no models.
    */
-  public async listModels(): Promise<ReadonlyArray<CopilotModelInfo> | null> {
+  public async listModels(): Promise<ReadonlyArray<ModelInfo> | null> {
     if (
       this.currentAccount === null ||
       !enableCopilotSdkCommitMessageGeneration(this.currentAccount)
@@ -1263,11 +1209,11 @@ export class CopilotStore extends BaseStore {
    * we know about right now use this entry point and treat "unavailable"
    * the same as "empty list".
    */
-  private async getCachedModels(): Promise<ReadonlyArray<CopilotModelInfo>> {
+  private async getCachedModels(): Promise<ReadonlyArray<ModelInfo>> {
     return (await this.listModels()) ?? []
   }
 
-  private async fetchAndCacheModels(): Promise<ReadonlyArray<CopilotModelInfo> | null> {
+  private async fetchAndCacheModels(): Promise<ReadonlyArray<ModelInfo> | null> {
     // Deduplicate concurrent fetches — if one is already in flight, reuse it.
     if (this.modelsInFlight !== null) {
       return this.modelsInFlight
@@ -1285,14 +1231,12 @@ export class CopilotStore extends BaseStore {
     }
   }
 
-  private async fetchModels(): Promise<ReadonlyArray<CopilotModelInfo> | null> {
+  private async fetchModels(): Promise<ReadonlyArray<ModelInfo> | null> {
     const client = await this.createClient()
 
     try {
       await client.start()
-      const models = (await client.listModels())
-        .map(normalizeCopilotModelInfo)
-        .map(getCopilotModelWithTemporaryMockUsageBilling)
+      const models = await client.listModels()
       this.cachedModels = models
       this.modelsCachedAt = Date.now()
       return models
