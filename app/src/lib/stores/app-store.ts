@@ -164,7 +164,6 @@ import {
 import { assertNever, fatalError, forceUnwrap } from '../fatal-error'
 
 import { formatCommitMessage } from '../format-commit-message'
-import { createCommitURL } from '../commit-url'
 import {
   getAccountForCommitMessageGeneration,
   getAccountForCopilotConflictResolution,
@@ -6180,7 +6179,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const ghRepo = isRepositoryWithGitHubRepository(repository)
       ? repository.gitHubRepository
       : null
-    const repositoryHtmlUrl = ghRepo?.htmlURL ?? null
 
     // Treat a commit as "on the remote" when it isn't in the git store's
     // local-only set. localCommitSHAs tracks current-branch commits that
@@ -6189,23 +6187,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const localShas = new Set(
       this.gitStoreCache.get(repository).localCommitSHAs
     )
-    const toContextCommit = (commit: Commit): IConflictContextCommit => {
-      const isOnRemote = !localShas.has(commit.sha)
-      return {
-        sha: commit.sha,
-        shortSha: commit.shortSha,
-        summary: commit.summary,
-        isOnRemote,
-        url: isOnRemote && ghRepo ? createCommitURL(ghRepo, commit.sha) : null,
-      }
-    }
-
-    const prUrl = (prNumber: number): string | null =>
-      repositoryHtmlUrl ? `${repositoryHtmlUrl}/pull/${prNumber}` : null
+    const toContextCommit = (commit: Commit): IConflictContextCommit => ({
+      sha: commit.sha,
+      shortSha: commit.shortSha,
+      summary: commit.summary,
+      isOnRemote: !localShas.has(commit.sha),
+    })
 
     const currentPullRequest = state.branchesState.currentPullRequest
     const seededPullRequests = new Map<number, IConflictContextPullRequest>()
-    const ourSeedNumbers: Array<number> = []
     if (currentPullRequest !== null) {
       // The current branch's own PR is authoritative from app state and may
       // be merged/closed (and thus absent from the open-PR cache), so seed
@@ -6214,58 +6204,36 @@ export class AppStore extends TypedBaseStore<IAppState> {
         number: currentPullRequest.pullRequestNumber,
         title: currentPullRequest.title,
         body: currentPullRequest.body,
-        url: prUrl(currentPullRequest.pullRequestNumber),
       })
-      ourSeedNumbers.push(currentPullRequest.pullRequestNumber)
     }
 
     // Mine PR references from *both* sides' commits. Ours-vs-theirs is not a
     // reliable proxy for "which side carries the PRs" — a rebase, for
     // instance, makes ours the branch you're landing onto — so we gather
     // symmetrically and let the model decide what's material.
-    const ourNumbers = new Set<number>([
-      ...ourSeedNumbers,
+    const allPrNumbers = new Set<number>([
+      ...seededPullRequests.keys(),
       ...extractPullRequestNumbersFromCommits(commitContext?.ourCommits ?? []),
+      ...extractPullRequestNumbersFromCommits(
+        commitContext?.theirCommits ?? []
+      ),
     ])
-    const theirNumbers = new Set<number>(
-      extractPullRequestNumbersFromCommits(commitContext?.theirCommits ?? [])
-    )
 
     const resolved = await this.resolvePullRequestContexts(
       repository,
       ghRepo,
-      [...new Set([...ourNumbers, ...theirNumbers])],
-      prUrl,
+      [...allPrNumbers],
       seededPullRequests
     )
 
-    // Assign each resolved PR to a single side; ours wins when a PR appears
-    // in both histories (most notably the current branch's own PR).
-    const claimed = new Set<number>()
-    const pickSide = (
-      numbers: ReadonlySet<number>
-    ): ReadonlyArray<IConflictContextPullRequest> => {
-      const picked: Array<IConflictContextPullRequest> = []
-      for (const n of numbers) {
-        if (claimed.has(n)) {
-          continue
-        }
-        const pr = resolved.get(n)
-        if (pr !== undefined) {
-          claimed.add(n)
-          picked.push(pr)
-        }
-      }
-      return picked
-    }
-
-    const ourPullRequests = pickSide(ourNumbers)
-    const theirPullRequests = pickSide(theirNumbers)
+    // Build a deterministic flat list from the input number order.
+    const pullRequests = [...allPrNumbers]
+      .map(n => resolved.get(n))
+      .filter((pr): pr is IConflictContextPullRequest => pr !== undefined)
 
     return {
       ...fileContext,
-      ourPullRequests,
-      theirPullRequests,
+      pullRequests,
       ourCommits: (commitContext?.ourCommits ?? []).map(toContextCommit),
       theirCommits: (commitContext?.theirCommits ?? []).map(toContextCommit),
     }
@@ -6282,7 +6250,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     repository: Repository,
     ghRepo: GitHubRepository | null,
     numbers: ReadonlyArray<number>,
-    prUrl: (prNumber: number) => string | null,
     seeded: ReadonlyMap<number, IConflictContextPullRequest>
   ): Promise<Map<number, IConflictContextPullRequest>> {
     const byNumber = new Map<number, IConflictContextPullRequest>(seeded)
@@ -6303,7 +6270,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
           number: pr.pullRequestNumber,
           title: pr.title,
           body: pr.body,
-          url: prUrl(pr.pullRequestNumber),
         })
       }
     } catch (e) {
@@ -6330,7 +6296,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
                   number: prNumber,
                   title: apiPr.title,
                   body: apiPr.body,
-                  url: prUrl(prNumber),
                 })
               }
             } catch {
