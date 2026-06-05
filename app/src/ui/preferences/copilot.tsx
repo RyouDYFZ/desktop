@@ -181,10 +181,7 @@ export class CopilotPreferences extends React.Component<
     return (
       <CopilotModelPicker
         label={label}
-        // HACK(copilot-sdk): this `as any` should be removed when we update to the
-        // fixed @github/copilot-sdk version that includes the new billing fields in
-        // the ModelInfo type
-        copilotModels={copilotModels as any}
+        copilotModels={copilotModels}
         byokProviders={byokProviders}
         value={value}
         onChange={onChange}

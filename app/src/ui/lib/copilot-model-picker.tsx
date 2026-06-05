@@ -4,18 +4,20 @@ import memoizeOne from 'memoize-one'
 import { DefaultCopilotModel } from '../../lib/stores/copilot-store'
 import { type IBYOKProvider, encodeModelKey } from '../../lib/copilot/byok'
 import { IFilterListGroup, IFilterListItem } from './filter-list'
-import type { RowIndexPath } from './list/list-row-index-path'
 import { PopoverDropdown } from './popover-dropdown'
 import { SectionFilterList } from './section-filter-list'
+// HACK(copilot-sdk): this `ModelBilling` imports should be removed when we
+// update to the fixed @github/copilot-sdk version that includes the new billing
+// fields in the ModelInfo type
 import {
-  Model,
   ModelBilling,
   ModelBillingTokenPricesLongContext,
 } from '@github/copilot-sdk/dist/generated/rpc'
+import { ModelInfo } from '@github/copilot-sdk'
 
 interface ICopilotModelPickerProps {
   readonly label: string
-  readonly copilotModels: ReadonlyArray<Model>
+  readonly copilotModels: ReadonlyArray<ModelInfo>
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
   readonly value: string
   readonly onChange: (value: string) => void
@@ -35,8 +37,8 @@ interface ICopilotModelListItem extends IFilterListItem {
   readonly isDefault: boolean
 }
 
-const ModelPickerGroupHeaderRowHeight = 36
-const ModelPickerItemRowHeight = 104
+const ModelPickerCompactRowHeight = 36
+const ModelPickerUsageBillingRowHeight = 104
 
 const getPremiumRequestsBillingLabel = (billing: ModelBilling | undefined) => {
   const multiplier = billing?.multiplier
@@ -71,7 +73,7 @@ const formatTokenBatchSize = (tokenCount: number) => {
 }
 
 const getCopilotModelGroups = (
-  copilotModels: ReadonlyArray<Model>,
+  copilotModels: ReadonlyArray<ModelInfo>,
   byokProviders: ReadonlyArray<IBYOKProvider>
 ): ReadonlyArray<IFilterListGroup<ICopilotModelListItem>> => {
   const groups = new Array<IFilterListGroup<ICopilotModelListItem>>()
@@ -92,7 +94,10 @@ const getCopilotModelGroups = (
           text: [model.name, model.id, providerName],
           value,
           name: model.name,
-          billing: model.billing,
+          // HACK(copilot-sdk): this `as ModelBilling` should be removed when we update to the
+          // fixed @github/copilot-sdk version that includes the new billing fields in
+          // the ModelInfo type
+          billing: model.billing as ModelBilling | undefined,
           isDefault: model.id === DefaultCopilotModel,
         }
       }),
@@ -129,7 +134,7 @@ const getCopilotModelGroups = (
 }
 
 export const hasCopilotModelPickerItems = (
-  copilotModels: ReadonlyArray<Model>,
+  copilotModels: ReadonlyArray<ModelInfo>,
   byokProviders: ReadonlyArray<IBYOKProvider>
 ) =>
   copilotModels.length > 0 ||
@@ -196,8 +201,14 @@ export class CopilotModelPicker extends React.Component<
     this.setState({ selectedItemId: selectedItem?.id })
   }
 
-  private getRowHeight = ({ index }: { readonly index: RowIndexPath }) =>
-    index.row === 0 ? ModelPickerGroupHeaderRowHeight : ModelPickerItemRowHeight
+  private getRowHeight = ({
+    item,
+  }: {
+    readonly item: ICopilotModelListItem | null
+  }) =>
+    item?.billing?.tokenPrices === undefined
+      ? ModelPickerCompactRowHeight
+      : ModelPickerUsageBillingRowHeight
 
   private renderUsageBillingRow = (label: string, value: number) => {
     return (

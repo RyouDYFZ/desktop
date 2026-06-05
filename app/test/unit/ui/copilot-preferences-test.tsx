@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { before, describe, it } from 'node:test'
+import { describe, it } from 'node:test'
 import * as React from 'react'
 import { render, screen, fireEvent, waitFor } from '../../helpers/ui/render'
 import { CopilotPreferences } from '../../../src/ui/preferences/copilot'
@@ -116,9 +116,11 @@ class TestListResizeObserver implements ResizeObserver {
   public disconnect() {}
 }
 
-before(() => {
+Object.assign(globalThis, { ResizeObserver: TestListResizeObserver })
+
+if (typeof window !== 'undefined') {
   Object.assign(window, { ResizeObserver: TestListResizeObserver })
-})
+}
 
 function defaults() {
   return {
@@ -135,17 +137,34 @@ function defaults() {
 }
 
 function getModelPickerButton(container: HTMLElement): HTMLButtonElement {
-  const button = container.querySelector(
-    '.copilot-model-picker > .button-component'
-  )
+  const button = getModelPickerButtons(container)[0]
 
   assert.ok(button instanceof HTMLButtonElement)
 
   return button
 }
 
+function getModelPickerButtons(
+  container: HTMLElement
+): ReadonlyArray<HTMLButtonElement> {
+  const buttons = container.querySelectorAll(
+    '.copilot-model-picker > .button-component'
+  )
+
+  return Array.from(buttons).filter(
+    (button): button is HTMLButtonElement => button instanceof HTMLButtonElement
+  )
+}
+
 function getModelPickerButtonText(container: HTMLElement): string {
   return getModelPickerButton(container).textContent ?? ''
+}
+
+function getListItemHeight(element: HTMLElement): string {
+  const row = element.closest('.list-item')
+  assert.ok(row instanceof HTMLElement)
+
+  return row.style.height
 }
 
 describe('CopilotPreferences', () => {
@@ -194,6 +213,18 @@ describe('CopilotPreferences', () => {
     assert.ok(screen.getByText('50'))
     assert.ok(screen.getByText('Output'))
     assert.ok(screen.getByText('2500'))
+    assert.strictEqual(
+      getListItemHeight(screen.getByText('GitHub Copilot')),
+      '36px'
+    )
+    assert.strictEqual(
+      getListItemHeight(screen.getByText('Claude Sonnet (2x)')),
+      '36px'
+    )
+    assert.strictEqual(
+      getListItemHeight(screen.getByText('Usage Billed Model')),
+      '104px'
+    )
   })
 
   it('renders a BYOK group per provider', async () => {
@@ -423,14 +454,17 @@ describe('CopilotPreferences', () => {
   describe('conflict resolution model picker', () => {
     const previousPreviewFeatures = process.env.GITHUB_DESKTOP_PREVIEW_FEATURES
 
-    function withConflictResolutionEnabled(enabled: boolean, fn: () => void) {
+    async function withConflictResolutionEnabled(
+      enabled: boolean,
+      fn: () => Promise<void> | void
+    ) {
       if (enabled) {
         process.env.GITHUB_DESKTOP_PREVIEW_FEATURES = '1'
       } else {
         delete process.env.GITHUB_DESKTOP_PREVIEW_FEATURES
       }
       try {
-        fn()
+        await fn()
       } finally {
         if (previousPreviewFeatures === undefined) {
           delete process.env.GITHUB_DESKTOP_PREVIEW_FEATURES
@@ -440,24 +474,22 @@ describe('CopilotPreferences', () => {
       }
     }
 
-    it('is hidden when the feature flag is disabled', () => {
-      withConflictResolutionEnabled(false, () => {
+    it('is hidden when the feature flag is disabled', async () => {
+      await withConflictResolutionEnabled(false, () => {
         const view = render(<CopilotPreferences {...defaults()} />)
-        const selects = view.container.querySelectorAll('select')
-        assert.strictEqual(selects.length, 1)
+        assert.strictEqual(getModelPickerButtons(view.container).length, 1)
       })
     })
 
-    it('renders a second picker when the feature flag is enabled', () => {
-      withConflictResolutionEnabled(true, () => {
+    it('renders a second picker when the feature flag is enabled', async () => {
+      await withConflictResolutionEnabled(true, () => {
         const view = render(<CopilotPreferences {...defaults()} />)
-        const selects = view.container.querySelectorAll('select')
-        assert.strictEqual(selects.length, 2)
+        assert.strictEqual(getModelPickerButtons(view.container).length, 2)
       })
     })
 
-    it('emits the conflict-resolution feature on change', () => {
-      withConflictResolutionEnabled(true, () => {
+    it('emits the conflict-resolution feature on change', async () => {
+      await withConflictResolutionEnabled(true, async () => {
         const changed: Array<{
           feature: CopilotFeature
           model: string | null
@@ -470,16 +502,14 @@ describe('CopilotPreferences', () => {
             }
           />
         )
-        const selects = view.container.querySelectorAll('select')
-        const conflictSelect = selects[1] as HTMLSelectElement
-        fireEvent.change(conflictSelect, {
-          target: {
-            value: encodeModelKey({
-              kind: 'copilot',
-              modelId: 'claude-sonnet',
-            }),
-          },
-        })
+        const buttons = getModelPickerButtons(view.container)
+        const conflictPickerButton = buttons[1]
+        assert.ok(conflictPickerButton instanceof HTMLButtonElement)
+
+        fireEvent.click(conflictPickerButton)
+        await waitFor(() => assert.ok(screen.getByText('Claude Sonnet (2x)')))
+        fireEvent.click(screen.getByText('Claude Sonnet (2x)'))
+
         assert.deepStrictEqual(changed, [
           {
             feature: 'conflict-resolution',
