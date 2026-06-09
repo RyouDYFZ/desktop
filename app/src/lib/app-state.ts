@@ -1,5 +1,6 @@
 import type { CopilotModelSelections } from './stores/copilot-store'
 import type { IBYOKProvider } from './copilot/byok'
+import type { IConflictResolutionModelDisplay } from './copilot/conflict-resolution-model'
 import type {
   IFileResolution,
   IConflictResolutionProgress,
@@ -406,7 +407,9 @@ export interface IAppState {
 
   readonly copilotConflictResolutionDisclaimerLastSeen: number | null
 
-  readonly copilotConflictResolutionButtonClicked: boolean
+  readonly copilotConflictResolutionClickCount: number
+
+  readonly alwaysUseCopilotForConflictResolution: boolean
 
   /** Whether the changes filter is shown */
   readonly showChangesFilter: boolean
@@ -1099,6 +1102,13 @@ export interface IMultiCommitOperationState {
    * UI away). Null when no resolution is in progress.
    */
   readonly copilotResolutionAbortController: AbortController | null
+
+  /**
+   * The model display captured at the time Copilot conflict resolution was
+   * started. Shown in the result dialog header so that changing the model
+   * setting mid-operation doesn't confuse the user.
+   */
+  readonly copilotResolutionModel: IConflictResolutionModelDisplay | null
 
   /**
    * The commit id of the tip of the branch user is modifying in the operation.
