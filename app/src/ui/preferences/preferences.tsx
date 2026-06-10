@@ -116,7 +116,6 @@ interface IPreferencesProps {
   readonly showDiffCheckMarks: boolean
   readonly selectedCopilotModels: CopilotModelSelections
   readonly copilotModels: ReadonlyArray<Model> | null
-  readonly copilotAvailable: boolean
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
 }
 
@@ -450,6 +449,18 @@ export class Preferences extends React.Component<
     this.props.dispatcher.showEnterpriseSignInDialog()
   }
 
+  private onOpenCopilotPlans = () => {
+    this.props.dispatcher.openInBrowser(
+      'https://github.com/features/copilot/plans'
+    )
+  }
+
+  private onOpenCopilotFeatureSettings = () => {
+    this.props.dispatcher.openInBrowser(
+      'https://github.com/settings/copilot/features'
+    )
+  }
+
   private onLogout = (account: Account) => {
     this.props.dispatcher.removeAccount(account)
   }
@@ -518,13 +529,17 @@ export class Preferences extends React.Component<
         break
       }
       case PreferencesTab.Copilot:
+        const dotComAccount = this.props.accounts.find(isDotComAccount) ?? null
         View = (
           <CopilotPreferences
             selectedCopilotModels={this.state.selectedCopilotModels}
             copilotModels={this.props.copilotModels}
-            copilotAvailable={this.props.copilotAvailable}
+            dotComAccount={dotComAccount}
             byokProviders={this.props.byokProviders}
             showBYOKSettings={this.shouldShowBYOKSettings()}
+            onDotComSignIn={this.onDotComSignIn}
+            onOpenCopilotPlans={this.onOpenCopilotPlans}
+            onOpenCopilotFeatureSettings={this.onOpenCopilotFeatureSettings}
             onSelectedCopilotModelChanged={this.onSelectedCopilotModelChanged}
             onAddBYOKProvider={this.onAddBYOKProvider}
             onEditBYOKProvider={this.onEditBYOKProvider}

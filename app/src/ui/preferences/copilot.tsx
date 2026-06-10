@@ -11,8 +11,10 @@ import {
   type CopilotFeature,
   type CopilotModelSelections,
 } from '../../lib/stores/copilot-store'
-import { DialogContent } from '../dialog'
+import type { Account } from '../../models/account'
+import { DialogContent, DialogPreferredFocusClassName } from '../dialog'
 import { Button } from '../lib/button'
+import { CallToAction } from '../lib/call-to-action'
 import {
   CopilotModelPicker,
   getCopilotModelPickerSelectionInfo,
@@ -29,9 +31,12 @@ import type { Model } from '@github/copilot-sdk/dist/generated/rpc'
 interface ICopilotPreferencesProps {
   readonly selectedCopilotModels: CopilotModelSelections
   readonly copilotModels: ReadonlyArray<Model> | null
-  readonly copilotAvailable: boolean
+  readonly dotComAccount: Account | null
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
   readonly showBYOKSettings: boolean
+  readonly onDotComSignIn: () => void
+  readonly onOpenCopilotPlans: () => void
+  readonly onOpenCopilotFeatureSettings: () => void
   readonly onSelectedCopilotModelChanged: (
     feature: CopilotFeature,
     model: string | null
@@ -44,6 +49,13 @@ interface ICopilotPreferencesProps {
 interface ICopilotPreferencesState {
   readonly selectedTabIndex: number
 }
+
+type CopilotAccessState =
+  | 'signed-out'
+  | 'checking'
+  | 'no-license'
+  | 'desktop-disabled'
+  | 'enabled'
 
 export class CopilotPreferences extends React.Component<
   ICopilotPreferencesProps,
@@ -75,7 +87,21 @@ export class CopilotPreferences extends React.Component<
     this.props.onDeleteBYOKProvider(provider)
 
   public render() {
-    const showBYOK = this.props.showBYOKSettings && this.props.copilotAvailable
+    const accessState = this.getCopilotAccessState()
+
+    if (accessState !== 'enabled') {
+      return (
+        <DialogContent className="copilot-tab">
+          <div className="copilot-tab-content">
+            <div className="copilot-section">
+              {this.renderAccessState(accessState)}
+            </div>
+          </div>
+        </DialogContent>
+      )
+    }
+
+    const showBYOK = this.props.showBYOKSettings
 
     if (!showBYOK) {
       return (
@@ -110,16 +136,76 @@ export class CopilotPreferences extends React.Component<
     return this.renderModelPicker()
   }
 
-  private renderModelPicker() {
-    if (!this.props.copilotAvailable) {
-      return (
-        <p>
-          Sign in to a GitHub.com account in the Accounts tab to configure
-          Copilot settings.
-        </p>
-      )
+  private getCopilotAccessState(): CopilotAccessState {
+    const account = this.props.dotComAccount
+
+    if (account === null) {
+      return 'signed-out'
     }
 
+    if (account.copilotLicenseType === 'NO_ACCESS') {
+      return 'no-license'
+    }
+
+    if (account.isCopilotDesktopEnabled === false) {
+      return 'desktop-disabled'
+    }
+
+    if (account.isCopilotDesktopEnabled === true) {
+      return 'enabled'
+    }
+
+    return 'checking'
+  }
+
+  private renderAccessState(accessState: CopilotAccessState): JSX.Element {
+    switch (accessState) {
+      case 'signed-out':
+        return this.renderAccessCallToAction(
+          'Sign in to your GitHub.com account to configure Copilot settings.',
+          __DARWIN__ ? 'Sign Into GitHub.com' : 'Sign into GitHub.com',
+          this.props.onDotComSignIn,
+          DialogPreferredFocusClassName
+        )
+      case 'checking':
+        return <p>Checking Copilot access…</p>
+      case 'no-license':
+        return this.renderAccessCallToAction(
+          'Copilot features in GitHub Desktop require access to GitHub Copilot.',
+          'View Copilot plans',
+          this.props.onOpenCopilotPlans
+        )
+      case 'desktop-disabled':
+        return this.renderAccessCallToAction(
+          'Copilot is enabled for your account, but Copilot in GitHub Desktop is disabled in your Copilot feature settings.',
+          'Open Copilot feature settings',
+          this.props.onOpenCopilotFeatureSettings
+        )
+      case 'enabled':
+        return this.renderModelPicker()
+    }
+  }
+
+  private renderAccessCallToAction(
+    message: string,
+    actionTitle: string,
+    onAction: () => void,
+    buttonClassName?: string
+  ): JSX.Element {
+    return (
+      <div className="copilot-access-call-to-action">
+        <CallToAction
+          actionTitle={actionTitle}
+          onAction={onAction}
+          buttonClassName={buttonClassName}
+        >
+          <div>{message}</div>
+        </CallToAction>
+      </div>
+    )
+  }
+
+  private renderModelPicker() {
     const { copilotModels, byokProviders } = this.props
 
     if (copilotModels === null) {
@@ -127,7 +213,7 @@ export class CopilotPreferences extends React.Component<
     }
 
     if (!hasCopilotModelPickerItems(copilotModels, byokProviders)) {
-      return <p>No models available. Check your Copilot subscription.</p>
+      return <p>No Copilot models available.</p>
     }
 
     return (
