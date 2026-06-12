@@ -423,9 +423,6 @@ export interface IAppState {
    */
   readonly copilotModels: ReadonlyArray<Model> | null
 
-  /** Whether Copilot is available (i.e. a GitHub.com account is signed in). */
-  readonly copilotAvailable: boolean
-
   /**
    * The list of user-configured Copilot model providers (BYOK). Empty when
    * the user has not configured any custom providers.
