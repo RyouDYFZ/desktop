@@ -58,6 +58,26 @@ export interface IRowRendererParams {
 
 export type ClickSource = IMouseClickSource | IKeyboardSource
 
+export type SectionListRowHeight =
+  | number
+  | ((info: { readonly index: RowIndexPath }) => number)
+
+/** Exported for testing. */
+export function getRowOffsetInSection(
+  rowHeight: SectionListRowHeight,
+  indexPath: RowIndexPath
+) {
+  if (typeof rowHeight === 'number') {
+    return indexPath.row * rowHeight
+  }
+
+  let offset = 0
+  for (let row = 0; row < indexPath.row; row++) {
+    offset += rowHeight({ index: { section: indexPath.section, row } })
+  }
+  return offset
+}
+
 interface ISectionListProps {
   /**
    * Mandatory callback for rendering the contents of a particular
@@ -101,7 +121,7 @@ interface ISectionListProps {
    * are of equal height, or, a function that, given a row index returns
    * the height of that particular row.
    */
-  readonly rowHeight: number | ((info: { index: RowIndexPath }) => number)
+  readonly rowHeight: SectionListRowHeight
 
   /**
    * Function that generates an ID for a given row. This will allow the
@@ -979,7 +999,10 @@ export class SectionList extends React.Component<
 
     const rowHeight = this.getHeightForRowAtIndexPath(indexPath)
     const sectionOffset = this.getSectionScrollOffset(indexPath.section)
-    const rowOffsetInSection = this.getRowOffsetInSection(indexPath)
+    const rowOffsetInSection = getRowOffsetInSection(
+      this.props.rowHeight,
+      indexPath
+    )
 
     const grid = ReactDOM.findDOMNode(this.rootGrid)
     if (!(grid instanceof HTMLElement)) {
@@ -1212,6 +1235,7 @@ export class SectionList extends React.Component<
         <ListRow
           key={params.key}
           id={id}
+          role="option"
           ariaLabel={ariaLabel}
           sectionHasHeader={sectionHasHeader}
           onRowRef={this.onRowRef}
@@ -1373,18 +1397,6 @@ export class SectionList extends React.Component<
       )
     }
 
-  private getRowOffsetInSection(indexPath: RowIndexPath) {
-    if (typeof this.props.rowHeight === 'number') {
-      return indexPath.row * this.props.rowHeight
-    }
-
-    let offset = 0
-    for (let i = 0; i < indexPath.row; i++) {
-      offset += this.props.rowHeight({ index: indexPath })
-    }
-    return offset
-  }
-
   private getSectionHeight(section: number) {
     if (typeof this.props.rowHeight === 'number') {
       return this.props.rowCount[section] * this.props.rowHeight
@@ -1511,14 +1523,19 @@ export class SectionList extends React.Component<
 
     this.lastScroll = 'fake'
 
-    if (this.rootGrid) {
-      const element = ReactDOM.findDOMNode(this.rootGrid)
-      if (element instanceof Element) {
-        element.scrollTop = e.currentTarget.scrollTop
-      }
-    }
+    const scrollTop = e.currentTarget.scrollTop
 
-    this.setState({ scrollTop: e.currentTarget.scrollTop })
+    // Use scrollToPosition instead of directly setting element.scrollTop.
+    // Direct DOM mutation doesn't properly update react-virtualized's internal
+    // state, which can cause rows to not render correctly after keyboard
+    // navigation followed by scrollbar dragging.
+    // See https://github.com/desktop/desktop/issues/21940
+    this.rootGrid?.scrollToPosition({
+      scrollLeft: 0,
+      scrollTop,
+    })
+
+    this.setState({ scrollTop })
 
     // Make sure the root grid re-renders its children
     this.rootGrid?.recomputeGridSize()

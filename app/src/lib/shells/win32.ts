@@ -5,7 +5,7 @@ import { assertNever } from '../fatal-error'
 import { enableWSLDetection } from '../feature-flag'
 import { findGitOnPath } from '../is-git-on-path'
 import { parseEnumValue } from '../enum'
-import { pathExists } from '../../ui/lib/path-exists'
+import { pathExists } from '../path-exists'
 import { FoundShell } from './shared'
 import {
   expandTargetPathArgument,
@@ -551,8 +551,7 @@ export function launchCustomShell(
   log.info(`launching custom shell at path: ${customShell.path}`)
   const argv = parseCustomIntegrationArguments(customShell.arguments)
   const args = expandTargetPathArgument(argv, path)
-  return spawnCustomIntegration(`"${customShell.path}"`, args, {
-    shell: true,
+  return spawnCustomIntegration(customShell.path, args, {
     cwd: path,
   })
 }
