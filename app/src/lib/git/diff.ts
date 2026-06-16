@@ -23,7 +23,8 @@ import {
 
 import { DiffParser } from '../diff-parser'
 import { getOldPathOrDefault } from '../get-old-path'
-import { readFile } from 'fs/promises'
+import { readFile, writeFile, unlink } from 'fs/promises'
+import { getTempFilePath } from '../file-system'
 import { forceUnwrap } from '../fatal-error'
 import { git } from './core'
 import { NullTreeSHA } from './diff-index'
@@ -397,6 +398,78 @@ export async function getWorkingDirectoryDiff(
   const lineEndingsChange = parseLineEndingsWarning(stderr)
 
   return buildDiff(stdout, repository, file, 'HEAD', 'HEAD', lineEndingsChange)
+}
+
+/**
+ * Compute a diff between the current on-disk file content (with conflict
+ * markers) and Copilot's resolved content string.
+ *
+ * Uses `git diff --no-index` with temp files, following the same pattern as
+ * getWorkingDirectoryDiff for new/untracked files.
+ */
+export async function getResolutionDiff(
+  repository: Repository,
+  filePath: string,
+  resolvedContent: string,
+  hideWhitespaceInDiff: boolean = false
+): Promise<IDiff> {
+  const originalContent = await readFile(
+    Path.join(repository.path, filePath),
+    'utf8'
+  )
+
+  const tempOriginal = getTempFilePath('conflict-original')
+  const tempResolved = getTempFilePath('conflict-resolved')
+
+  try {
+    await writeFile(tempOriginal, originalContent, 'utf8')
+    await writeFile(tempResolved, resolvedContent, 'utf8')
+
+    const args = [
+      'diff',
+      ...(hideWhitespaceInDiff ? ['-w'] : []),
+      '--no-ext-diff',
+      '--patch-with-raw',
+      '-z',
+      '--no-color',
+      '--no-index',
+      '--',
+      tempOriginal,
+      tempResolved,
+    ]
+
+    const { stdout } = await git(args, repository.path, 'getResolutionDiff', {
+      successExitCodes: new Set([0, 1]),
+      encoding: 'buffer',
+    })
+
+    if (!isValidBuffer(stdout)) {
+      return { kind: DiffType.Unrenderable }
+    }
+
+    const diff = diffFromRawDiffOutput(stdout)
+
+    if (isDiffTooLarge(diff)) {
+      return {
+        kind: DiffType.LargeText,
+        text: diff.contents,
+        hunks: diff.hunks,
+        maxLineNumber: diff.maxLineNumber,
+        hasHiddenBidiChars: diff.hasHiddenBidiChars,
+      }
+    }
+
+    return {
+      kind: DiffType.Text,
+      text: diff.contents,
+      hunks: diff.hunks,
+      maxLineNumber: diff.maxLineNumber,
+      hasHiddenBidiChars: diff.hasHiddenBidiChars,
+    }
+  } finally {
+    await unlink(tempOriginal).catch(() => {})
+    await unlink(tempResolved).catch(() => {})
+  }
 }
 
 /**

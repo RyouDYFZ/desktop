@@ -3,12 +3,9 @@ import * as Path from 'path'
 import { CommittedFileChange } from '../../../models/status'
 import {
   DiffType,
-  ITextDiff,
+  IDiff,
   ImageDiffType,
-  DiffHunkExpansionType,
 } from '../../../models/diff'
-import { DiffHunk, DiffHunkHeader } from '../../../models/diff/raw-diff'
-import { DiffLine, DiffLineType } from '../../../models/diff/diff-line'
 import { WorkingDirectoryFileChange } from '../../../models/status'
 import { IFileResolution } from '../../../lib/copilot-conflict-resolution'
 import { FileList } from '../../history/file-list'
@@ -17,6 +14,7 @@ import { DiffOptions } from '../../diff/diff-options'
 import { Repository } from '../../../models/repository'
 import { Dispatcher } from '../../dispatcher'
 import { openFile } from '../../lib/open-file'
+import { getResolutionDiff } from '../../../lib/git'
 
 interface ICopilotConflictsChangesProps {
   readonly repository: Repository
@@ -27,6 +25,8 @@ interface ICopilotConflictsChangesProps {
 
 interface ICopilotConflictsChangesState {
   readonly selectedFile: CommittedFileChange | null
+  readonly diff: IDiff | null
+  readonly isLoadingDiff: boolean
   readonly showSideBySideDiff: boolean
   readonly hideWhitespaceInDiff: boolean
   readonly imageDiffType: ImageDiffType
@@ -42,15 +42,50 @@ export class CopilotConflictsChanges extends React.Component<
   ICopilotConflictsChangesProps,
   ICopilotConflictsChangesState
 > {
+  private diffRequestId = 0
+  private mounted = false
+
   public constructor(props: ICopilotConflictsChangesProps) {
     super(props)
 
     const files = this.getCommittedFiles()
     this.state = {
       selectedFile: files.length > 0 ? files[0] : null,
+      diff: null,
+      isLoadingDiff: false,
       showSideBySideDiff: false,
       hideWhitespaceInDiff: false,
       imageDiffType: ImageDiffType.TwoUp,
+    }
+  }
+
+  public componentDidMount() {
+    this.mounted = true
+    if (this.state.selectedFile !== null) {
+      this.loadDiffForFile(this.state.selectedFile)
+    }
+  }
+
+  public componentWillUnmount() {
+    this.mounted = false
+  }
+
+  public componentDidUpdate(
+    prevProps: ICopilotConflictsChangesProps,
+    prevState: ICopilotConflictsChangesState
+  ) {
+    const { selectedFile, hideWhitespaceInDiff } = this.state
+
+    if (
+      selectedFile !== prevState.selectedFile ||
+      hideWhitespaceInDiff !== prevState.hideWhitespaceInDiff ||
+      this.props.copilotResolutions !== prevProps.copilotResolutions
+    ) {
+      if (selectedFile !== null) {
+        this.loadDiffForFile(selectedFile)
+      } else {
+        this.setState({ diff: null, isLoadingDiff: false })
+      }
     }
   }
 
@@ -64,16 +99,36 @@ export class CopilotConflictsChanges extends React.Component<
     )
   }
 
-  private getDiffForFile(file: CommittedFileChange): ITextDiff | null {
+  private async loadDiffForFile(file: CommittedFileChange) {
     const resolution = this.props.copilotResolutions?.find(
       r => r.path === file.path
     )
 
     if (resolution === undefined) {
-      return null
+      this.setState({ diff: null, isLoadingDiff: false })
+      return
     }
 
-    return createMockDiff(file.path)
+    const requestId = ++this.diffRequestId
+    this.setState({ isLoadingDiff: true })
+
+    try {
+      const diff = await getResolutionDiff(
+        this.props.repository,
+        file.path,
+        resolution.resolvedContent,
+        this.state.hideWhitespaceInDiff
+      )
+
+      if (this.mounted && requestId === this.diffRequestId) {
+        this.setState({ diff, isLoadingDiff: false })
+      }
+    } catch (e) {
+      log.error('Failed to compute resolution diff', e)
+      if (this.mounted && requestId === this.diffRequestId) {
+        this.setState({ diff: null, isLoadingDiff: false })
+      }
+    }
   }
 
   private onSelectedFileChanged = (file: CommittedFileChange) => {
@@ -110,11 +165,13 @@ export class CopilotConflictsChanges extends React.Component<
 
   public render() {
     const files = this.getCommittedFiles()
-    const { selectedFile, showSideBySideDiff, hideWhitespaceInDiff } =
-      this.state
-
-    const diff =
-      selectedFile !== null ? this.getDiffForFile(selectedFile) : null
+    const {
+      selectedFile,
+      diff,
+      isLoadingDiff,
+      showSideBySideDiff,
+      hideWhitespaceInDiff,
+    } = this.state
 
     return (
       <div className="copilot-changes-tab">
@@ -138,23 +195,33 @@ export class CopilotConflictsChanges extends React.Component<
               onRowDoubleClick={this.onRowDoubleClick}
             />
           </div>
-          {selectedFile !== null && diff !== null && (
-            <Diff
-              repository={this.props.repository}
-              readOnly={true}
-              file={selectedFile}
-              diff={diff}
-              fileContents={null}
-              imageDiffType={this.state.imageDiffType}
-              hideWhitespaceInDiff={hideWhitespaceInDiff}
-              showSideBySideDiff={showSideBySideDiff}
-              showDiffCheckMarks={false}
-              onOpenBinaryFile={this.onOpenBinaryFile}
-              onChangeImageDiffType={this.onChangeImageDiffType}
-              onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
-            />
+          {selectedFile !== null && isLoadingDiff && (
+            <div className="copilot-changes-loading">
+              Loading diff&hellip;
+            </div>
           )}
-          {selectedFile !== null && diff === null && (
+          {selectedFile !== null &&
+            !isLoadingDiff &&
+            diff !== null &&
+            diff.kind === DiffType.Text && (
+              <Diff
+                repository={this.props.repository}
+                readOnly={true}
+                file={selectedFile}
+                diff={diff}
+                fileContents={null}
+                imageDiffType={this.state.imageDiffType}
+                hideWhitespaceInDiff={hideWhitespaceInDiff}
+                showSideBySideDiff={showSideBySideDiff}
+                showDiffCheckMarks={false}
+                onOpenBinaryFile={this.onOpenBinaryFile}
+                onChangeImageDiffType={this.onChangeImageDiffType}
+                onHideWhitespaceInDiffChanged={
+                  this.onHideWhitespaceInDiffChanged
+                }
+              />
+            )}
+          {selectedFile !== null && !isLoadingDiff && diff === null && (
             <div className="copilot-changes-no-diff">
               Diff preview is only available for files resolved by Copilot.
             </div>
@@ -162,66 +229,5 @@ export class CopilotConflictsChanges extends React.Component<
         </div>
       </div>
     )
-  }
-}
-
-// TODO: Remove — temporary mock diff for layout validation only
-function createMockDiff(_path: string): ITextDiff {
-  // prettier-ignore
-  const raw = [
-    ' import { Repository } from "../models/repository"',
-    ' ',
-    ' export function getConflictedFiles(',
-    '-<<<<<<< HEAD',
-    '-  repository: Repository,',
-    '-  includeResolved: boolean',
-    '-=======',
-    '-  repository: Repository',
-    '->>>>>>> feature-branch',
-    '+  repository: Repository,',
-    '+  includeResolved: boolean = false',
-    ' ): ReadonlyArray<string> {',
-    '   return []',
-    ' }',
-  ]
-
-  let oldLine = 1
-  let newLine = 1
-  const diffLines: DiffLine[] = raw.map((text, i) => {
-    const type =
-      text[0] === '+'
-        ? DiffLineType.Add
-        : text[0] === '-'
-        ? DiffLineType.Delete
-        : DiffLineType.Context
-    const oLine = type !== DiffLineType.Add ? oldLine++ : null
-    const nLine = type !== DiffLineType.Delete ? newLine++ : null
-    return new DiffLine(text, type, i + 1, oLine, nLine)
-  })
-
-  const header = new DiffHunkHeader(1, oldLine - 1, 1, newLine - 1)
-  diffLines.unshift(
-    new DiffLine(
-      header.toDiffLineRepresentation(),
-      DiffLineType.Hunk,
-      0,
-      null,
-      null
-    )
-  )
-
-  const hunk = new DiffHunk(
-    header,
-    diffLines,
-    0,
-    diffLines.length - 1,
-    DiffHunkExpansionType.None
-  )
-  return {
-    kind: DiffType.Text,
-    text: diffLines.map(l => l.text).join('\n'),
-    hunks: [hunk],
-    maxLineNumber: diffLines.length,
-    hasHiddenBidiChars: false,
   }
 }
