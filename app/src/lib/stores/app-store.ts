@@ -2646,12 +2646,22 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.commitSummaryWidth = constrain(this.commitSummaryWidth, 100, filesMax)
     this.stashedFilesWidth = constrain(this.stashedFilesWidth, 100, filesMax)
 
-    // Allocate branch first (highest priority), then worktree, then
-    // push-pull. Each subsequent allocation uses the clamped value of the
-    // previous to prevent the total from exceeding the available space.
+    // Allocate worktree first (highest priority), then branch, then
+    // push-pull. The foldouts are laid out in this order, so the width
+    // constraints should follow the same order. Each subsequent allocation
+    // uses the clamped value of the previous to prevent the total from
+    // exceeding the available space.
+    const worktreeDropdownMax =
+      available - defaultBranchDropdownWidth - defaultPushPullButtonWidth
+    this.worktreeDropdownWidth = constrain(
+      this.worktreeDropdownWidth,
+      Math.min(available / numButtons - 10, 170),
+      worktreeDropdownMax
+    )
+
     const branchDropdownMax =
       available -
-      (showWorktreeDropdown ? defaultWorktreeDropdownWidth : 0) -
+      (showWorktreeDropdown ? clamp(this.worktreeDropdownWidth) : 0) -
       defaultPushPullButtonWidth
     const minimumBranchDropdownWidth =
       defaultBranchDropdownWidth > available / numButtons
@@ -2661,14 +2671,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.branchDropdownWidth,
       minimumBranchDropdownWidth,
       branchDropdownMax
-    )
-
-    const worktreeDropdownMax =
-      available - clamp(this.branchDropdownWidth) - defaultPushPullButtonWidth
-    this.worktreeDropdownWidth = constrain(
-      this.worktreeDropdownWidth,
-      Math.min(available / numButtons - 10, 170),
-      worktreeDropdownMax
     )
 
     const pushPullButtonMaxWidth =
